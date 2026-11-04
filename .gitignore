@@ -1,0 +1,15 @@
+# Rust & Cargo
+target/
+debug/
+**/*.rs.bk
+*.pdb
+
+# Rust compiler crash dumps & mutation testing
+rustc-ice-*.txt
+**/mutants.out*/
+
+# IntelliJ
+.idea/
+
+# Agent skills
+/skills/
