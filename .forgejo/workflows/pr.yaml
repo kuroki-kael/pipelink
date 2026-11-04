@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-and-build:
+    name: Cargo Check & Build
+    runs-on: rust
+
+    steps:
+      - name: Checkout repository
+        run: |
+          git init .
+          git remote add origin "https://oauth2:${{ secrets.GITHUB_TOKEN }}@codeberg.org/${{ github.repository }}.git"
+          git fetch --depth=1 origin "${{ github.ref }}"
+          git checkout FETCH_HEAD
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            pkg-config \
+            libpipewire-0.3-dev \
+            libjack-jackd2-dev \
+            clang \
+            libclang-dev
+
+      - name: Run cargo check
+        run: cargo check --workspace --all-targets
+
+      - name: Run cargo build
+        run: cargo build --workspace --all-targets --release
+
+      - name: Run cargo test
+        run: cargo test --workspace
