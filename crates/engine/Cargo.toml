@@ -1,0 +1,26 @@
+[package]
+name = "pipelink-engine"
+version.workspace = true
+keywords.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal
+pipelink-common = { workspace = true }
+pipelink-jack = { workspace = true }
+pipelink-pw = { workspace = true }
+pipelink-resolver = { workspace = true }
+
+# Audio
+pipewire = { workspace = true }
+
+# Util
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true
