@@ -4,15 +4,16 @@
  */
 use std::ffi::CString;
 
+use pipelink_common::types::{ChannelName, MixName};
 use pipewire::{context::ContextBox, core::Core, node::Node, properties::properties};
 
 use crate::error::PipewireError;
 
-pub(crate) fn create_null_sink(core: &Core, name: &str) -> Result<Node, PipewireError> {
+pub(crate) fn create_null_sink(core: &Core, name: &ChannelName) -> Result<Node, PipewireError> {
     let props = properties!(
         *pipewire::keys::FACTORY_NAME => "support.null-audio-sink",
         *pipewire::keys::NODE_NAME => format!("pipelink.channel.{name}"),
-        *pipewire::keys::NODE_DESCRIPTION => name,
+        *pipewire::keys::NODE_DESCRIPTION => name.as_ref(),
         *pipewire::keys::MEDIA_CLASS => "Audio/Sink",
         *pipewire::keys::AUDIO_CHANNELS => "2",
         "audio.position" => "[ FL FR ]",
@@ -32,7 +33,7 @@ pub(crate) fn create_null_sink(core: &Core, name: &str) -> Result<Node, Pipewire
 )]
 pub(crate) fn create_loopback(
     context: &ContextBox,
-    name: &str,
+    name: &MixName,
 ) -> Result<*mut pipewire_sys::pw_impl_module, PipewireError> {
     if !name
         .chars()

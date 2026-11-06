@@ -5,6 +5,7 @@
 
 use std::{fmt, rc::Rc, thread};
 
+use pipelink_common::types::GlobalId;
 use pipewire::{channel, context::ContextRc, main_loop::MainLoopRc};
 use tokio::sync::mpsc::Sender as TokioSender;
 use tracing::{debug, error, warn};
@@ -88,7 +89,9 @@ impl PipewireService {
         let _registry_listener = registry
             .add_listener_local()
             .global(move |obj| state_reg.handle_pipewire_event(obj, &event_tx_actions, &reg_global))
-            .global_remove(move |id| state_remove.global_removed(id, &event_tx_remove))
+            .global_remove(move |id| {
+                state_remove.global_removed(GlobalId::from(id), &event_tx_remove);
+            })
             .register();
 
         if let Err(e) = event_tx.blocking_send(PipewireEvent::Ready) {

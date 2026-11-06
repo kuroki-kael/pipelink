@@ -4,7 +4,10 @@
  */
 use std::{any::Any, cell::RefCell, collections::HashMap};
 
-use pipelink_common::graph::node::NativeNode;
+use pipelink_common::types::{
+    ChannelName, ChannelPosition, GlobalId, MediaClass, NodeId, NodeName, NodeSerial, Pid,
+    PortDirection, PortId,
+};
 use pipewire::{
     core::Core,
     metadata::Metadata,
@@ -22,9 +25,9 @@ type StreamListenerEntry = (Node, Box<dyn Any>);
 
 #[derive(Default)]
 pub(crate) struct LoopState {
-    active_nodes: RefCell<HashMap<String, Node>>,
+    active_nodes: RefCell<HashMap<ChannelName, Node>>,
     default_metadata: RefCell<Option<Metadata>>,
-    stream_listeners: RefCell<HashMap<u32, StreamListenerEntry>>,
+    stream_listeners: RefCell<HashMap<NodeId, StreamListenerEntry>>,
 }
 
 impl LoopState {
@@ -47,23 +50,23 @@ impl LoopState {
                 },
             },
             Command::DeleteChannel { channel } => {
-                if let Some(id) = channel.get_id() {
-                    let _ = registry.destroy_global(id);
-                    self.active_nodes.borrow_mut().remove(channel.get_name());
+                if let Some(id) = channel.node.id {
+                    let _ = registry.destroy_global(id.0);
+                    self.active_nodes.borrow_mut().remove(&channel.name);
                 }
             },
             Command::DestroyNode { node_id } => {
-                let _ = registry.destroy_global(node_id);
+                let _ = registry.destroy_global(node_id.0);
             },
             Command::SetAppRoute { app, channel } => {
                 // set target.object to target channel serial on the stream node
-                if let Some(channel_serial) = channel.get_node().get_serial()
-                    && let Some(node_id) = app.node.get_id()
+                if let Some(channel_serial) = channel.node.serial
+                    && let Some(node_id) = app.node.id
                     && let Some(metadata) = self.default_metadata.borrow().as_ref()
                 {
                     let serial_str = channel_serial.to_string();
                     metadata.set_property(
-                        node_id,
+                        node_id.0,
                         "target.object",
                         Some("Spa:Id"),
                         Some(&serial_str),
@@ -77,7 +80,7 @@ impl LoopState {
             },
             Command::ClearNodeRoute { node_id } => {
                 if let Some(metadata) = self.default_metadata.borrow().as_ref() {
-                    metadata.set_property(node_id, "target.object", None, None);
+                    metadata.set_property(node_id.0, "target.object", None, None);
                     let _ = core.sync(0);
                     debug!("target.object cleared for {}", node_id);
                 }
@@ -101,22 +104,36 @@ impl LoopState {
 
         match obj.type_ {
             ObjectType::Node => {
-                let media_class = dict.get("media.class").unwrap_or_default();
-                let id = obj.id;
+                let media_class =
+                    MediaClass::from_pw_str(dict.get("media.class").unwrap_or_default());
+                let id = NodeId::from(obj.id);
+                let serial = dict
+                    .get("object.serial")
+                    .and_then(|s| s.parse().ok())
+                    .map(NodeSerial);
+                let pid = dict
+                    .get("application.process.id")
+                    .and_then(|p| p.parse().ok())
+                    .map(Pid);
+
+                let is_pipelink_node = dict
+                    .get("node.name")
+                    .is_some_and(|n| n.starts_with("pipelink."));
 
                 if let Some(name) = dict.get("node.name") {
                     let _ = event_tx.blocking_send(PipewireEvent::NodeAppeared {
                         id,
-                        name: name.to_string(),
-                        media_class: dict.get("media.class").unwrap_or_default().to_string(),
+                        name: NodeName::from(name),
+                        media_class: media_class.clone(),
                         app: None,
-                        pid: None,
-                        serial: dict.get("object.serial").and_then(|s| s.parse().ok()),
+                        pid,
+                        serial,
                         nick: dict.get("node.nick").map(ToString::to_string),
                     });
                 }
 
-                if media_class.starts_with("Stream/Output/")
+                if !is_pipelink_node
+                    && media_class.is_stream_output()
                     && let Ok(node_proxy) = registry.bind::<Node, _>(obj)
                 {
                     let tx = event_tx.clone();
@@ -127,10 +144,12 @@ impl LoopState {
                             if let Some(props) = info.props() {
                                 let _ = tx.blocking_send(PipewireEvent::NodeInfo {
                                     id,
+                                    node_name: props.get("node.name").map(NodeName::from),
                                     app: props.get("application.name").map(ToString::to_string),
                                     pid: props
                                         .get("application.process.id")
-                                        .and_then(|p| p.parse().ok()),
+                                        .and_then(|p| p.parse().ok())
+                                        .map(Pid),
                                     nick: props.get("node.nick").map(ToString::to_string),
                                 });
                             }
@@ -147,18 +166,13 @@ impl LoopState {
                     dict.get("node.id"),
                     dict.get("port.direction"),
                     dict.get("audio.channel"),
-                ) && let Ok(node_id) = node_id_str.parse::<u32>()
+                ) && let Ok(node_id) = node_id_str.parse::<NodeId>()
                 {
                     let _ = event_tx.blocking_send(PipewireEvent::PortAppeared {
-                        id: obj.id,
+                        id: PortId::from(obj.id),
                         node_id,
-                        direction: if direction == "in" {
-                            "Input".into()
-                        } else {
-                            "Output".into()
-                        },
-                        channel: channel.to_string(),
-                        node_name: dict.get("node.name").unwrap_or_default().to_string(),
+                        direction: PortDirection::from_pw_str(direction),
+                        channel: ChannelPosition::from_pw_str(channel),
                     });
                 }
             },
@@ -169,8 +183,9 @@ impl LoopState {
                         Ok(metadata) => {
                             debug!("Default metadata bound");
                             *self.default_metadata.borrow_mut() = Some(metadata);
-                            let _ = event_tx
-                                .blocking_send(PipewireEvent::MetadataAppeared { id: obj.id });
+                            let _ = event_tx.blocking_send(PipewireEvent::MetadataAppeared {
+                                id: GlobalId::from(obj.id),
+                            });
                         },
                         Err(e) => {
                             warn!("Failed to load metadata: {e:?}");
@@ -182,8 +197,8 @@ impl LoopState {
         }
     }
 
-    pub(crate) fn global_removed(&self, id: u32, event_tx: &Sender<PipewireEvent>) {
-        self.stream_listeners.borrow_mut().remove(&id);
+    pub(crate) fn global_removed(&self, id: GlobalId, event_tx: &Sender<PipewireEvent>) {
+        self.stream_listeners.borrow_mut().remove(&id.0);
         let _ = event_tx.blocking_send(PipewireEvent::GlobalRemoved { id });
     }
 }
