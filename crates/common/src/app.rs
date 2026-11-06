@@ -9,6 +9,8 @@ use std::{fmt, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::{AppId, Pid};
+
 /// Classification of the wrapper or execution environment detected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -57,10 +59,10 @@ impl fmt::Display for WrapperKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Default)]
 pub struct App {
     /// Original process ID queried (e.g. from `PipeWire`).
-    pub pid: u32,
+    pub pid: Pid,
     /// The target process ID after peeling away wrapper helpers (e.g. Electron
     /// `AudioService` -> main process).
-    pub actual_pid: u32,
+    pub actual_pid: Pid,
     /// Short canonical application slug (e.g. "streamcontroller", "discord", "reaper").
     pub app_name: String,
     /// Human-friendly display name (e.g. "`StreamController`", "Discord", "REAPER").
@@ -72,7 +74,7 @@ pub struct App {
     pub binary_path: Option<PathBuf>,
     /// Application ID if known (e.g. Flatpak ID "com.discordapp.Discord" or Steam App
     /// ID).
-    pub app_id: Option<String>,
+    pub app_id: Option<AppId>,
     /// Icon name or path from desktop file if found.
     pub icon: Option<String>,
     /// Path to matching `.desktop` entry file.

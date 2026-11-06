@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ExecutorError {
     #[error("Pipewire error: {0}")]
     Pipewire(String),

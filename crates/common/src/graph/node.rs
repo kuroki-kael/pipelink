@@ -7,118 +7,131 @@
 
 use std::collections::HashMap;
 
+use crate::types::{ChannelPosition, NodeId, NodeName, NodeSerial, PortDirection, PortId};
+
+/// Direction and channel position of a single registered port.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PortInfo {
+    /// Direction the port faces.
+    pub direction: PortDirection,
+    /// Channel position the port occupies within its node.
+    pub position: ChannelPosition,
+}
+
 /// `PipeWire` node metadata and registered ports.
 #[derive(Debug, Clone, Default)]
 pub struct Node {
-    pub name: String,
-    pub id: Option<u32>,
-    pub serial: Option<u64>,
-    pub ports: HashMap<String, u32>,
+    pub name: NodeName,
+    pub id: Option<NodeId>,
+    pub serial: Option<NodeSerial>,
+    /// Ports of this node, keyed by their `PipeWire` port id.
+    pub ports: HashMap<PortId, PortInfo>,
 }
 
 impl Node {
-    /// Sets the node name.
-    pub fn set_name(&mut self, name: &str) {
-        self.name = name.into();
-    }
-
-    /// Returns the node name.
-    #[must_use]
-    pub fn get_name(&self) -> &str {
-        &self.name
-    }
-
-    /// Sets the node global ID.
-    pub fn set_id(&mut self, id: Option<u32>) {
-        self.id = id;
-    }
-
-    /// Returns the node global ID.
-    #[must_use]
-    pub fn get_id(&self) -> Option<u32> {
-        self.id
-    }
-
-    /// Sets the node 64-bit serial number.
-    pub fn set_serial(&mut self, serial: Option<u64>) {
-        self.serial = serial;
-    }
-
-    /// Returns the node 64-bit serial number.
-    #[must_use]
-    pub fn get_serial(&self) -> Option<u64> {
-        self.serial
-    }
-
-    /// Adds or updates a port by name.
-    pub fn add_port(&mut self, port: &str, id: u32) {
-        self.ports.insert(port.into(), id);
-    }
-
-    /// Removes a port by name.
-    pub fn remove_port(&mut self, port: &str) {
-        self.ports.remove(port);
-    }
-
-    /// Returns the port ID for a given port name, if present.
-    #[must_use]
-    pub fn get_port(&self, port: &str) -> Option<u32> {
-        self.ports.get(port).copied()
-    }
-
-    /// Returns a reference to all ports mapped on this node.
-    #[must_use]
-    pub fn get_ports(&self) -> &HashMap<String, u32> {
-        &self.ports
-    }
-
     /// Returns whether this node is considered ready.
     #[must_use]
     pub fn is_ready(&self) -> bool {
         !self.name.is_empty() && self.serial.is_some() && !self.ports.is_empty()
     }
-}
 
-/// Common trait representing a native `PipeWire` node in `PipeLink`.
-pub trait NativeNode {
-    /// Returns the node name.
-    fn get_name(&self) -> &str;
+    /// Returns whether a port with the given direction and position is registered.
+    #[must_use]
+    pub fn has_port(&self, direction: PortDirection, position: ChannelPosition) -> bool {
+        self.ports
+            .values()
+            .any(|port| port.direction == direction && port.position == position)
+    }
 
-    /// Returns a mutable reference to the node name.
-    fn get_name_mut(&mut self) -> &mut String;
-
-    /// Sets the node name.
-    ///
-    /// Returns `true` if updated, or `false` if `name` is blank.
-    fn set_name(&mut self, name: impl Into<String>) -> bool {
-        let name = name.into();
-        if name.trim().is_empty() {
+    /// Registers a port on this node if the `node_id` matches.
+    pub fn on_port_appeared(
+        &mut self,
+        port_id: PortId,
+        node_id: NodeId,
+        direction: PortDirection,
+        position: ChannelPosition,
+    ) -> bool {
+        if self.id != Some(node_id) {
             return false;
         }
-        *self.get_name_mut() = name;
+
+        self.ports.insert(
+            port_id,
+            PortInfo {
+                direction,
+                position,
+            },
+        );
         true
     }
+}
 
-    /// Returns ports map for a specific `PipeWire` node ID if managed by this native
-    /// node.
-    fn get_ports_from_node(&self, node: u32) -> Option<&HashMap<String, u32>>;
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
 
-    /// Returns the port ID for a given port name and `PipeWire` node ID.
-    fn get_port(&self, port: &str, node: u32) -> Option<u32> {
-        self.get_ports_from_node(node)
-            .and_then(|ports| ports.get(port))
-            .copied()
+    fn node_with_id(id: NodeId) -> Node {
+        Node {
+            id: Some(id),
+            ..Default::default()
+        }
     }
 
-    /// Handles port registration when a port appears in `PipeWire`.
-    fn on_port_appeared(
-        &mut self,
-        port_id: u32,
-        node_id: u32,
-        direction: &str,
-        channel_pos: &str,
-    ) -> bool;
+    #[test]
+    fn test_on_port_appeared_rejects_foreign_node() {
+        let mut node = node_with_id(NodeId(1));
 
-    /// Returns whether this native node is fully initialized and ready.
-    fn is_ready(&self) -> bool;
+        assert!(!node.on_port_appeared(
+            PortId(10),
+            NodeId(2),
+            PortDirection::Input,
+            ChannelPosition::FrontLeft
+        ));
+        assert!(node.ports.is_empty());
+    }
+
+    #[test]
+    fn test_ports_with_same_direction_but_distinct_position_coexist() {
+        let mut node = node_with_id(NodeId(1));
+
+        assert!(node.on_port_appeared(
+            PortId(10),
+            NodeId(1),
+            PortDirection::Output,
+            ChannelPosition::Aux(0)
+        ));
+        assert!(node.on_port_appeared(
+            PortId(11),
+            NodeId(1),
+            PortDirection::Output,
+            ChannelPosition::Aux(1)
+        ));
+
+        assert_eq!(node.ports.len(), 2);
+        assert_eq!(
+            node.ports.get(&PortId(10)).unwrap().position,
+            ChannelPosition::Aux(0)
+        );
+        assert_eq!(
+            node.ports.get(&PortId(11)).unwrap().position,
+            ChannelPosition::Aux(1)
+        );
+    }
+
+    #[test]
+    fn test_has_port_matches_direction_and_position() {
+        let mut node = node_with_id(NodeId(1));
+
+        node.on_port_appeared(
+            PortId(10),
+            NodeId(1),
+            PortDirection::Input,
+            ChannelPosition::FrontLeft,
+        );
+
+        assert!(node.has_port(PortDirection::Input, ChannelPosition::FrontLeft));
+        assert!(!node.has_port(PortDirection::Output, ChannelPosition::FrontLeft));
+        assert!(!node.has_port(PortDirection::Input, ChannelPosition::FrontRight));
+    }
 }

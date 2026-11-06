@@ -7,73 +7,75 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::{ChannelName, MixName};
+
 /// Events sent from controllers (IPC, CLI, GUI, MIDI, Web) to request state changes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ControlEvent {
     /// Sets channel gain for a specific mix.
     SetChannelGain {
         /// Target channel name.
-        channel: String,
+        channel: ChannelName,
         /// Target mix name.
-        mix: String,
+        mix: MixName,
         /// Gain value in decibels.
         db_value: f32,
     },
     /// Sets mute status of a channel for a specific mix.
     SetChannelMute {
         /// Target channel name.
-        channel: String,
+        channel: ChannelName,
         /// Target mix name.
-        mix: String,
+        mix: MixName,
         /// Whether the channel should be muted.
         muted: bool,
     },
     /// Requests creation of a new audio channel.
     CreateChannel {
         /// Channel name to create.
-        name: String,
+        name: ChannelName,
     },
     /// Requests removal of an audio channel.
     RemoveChannel {
         /// Channel name to remove.
-        name: String,
+        name: ChannelName,
     },
     /// Requests creation of a new audio mix.
     CreateMix {
         /// Mix name to create.
-        name: String,
+        name: MixName,
     },
     /// Requests removal of an audio mix.
     RemoveMix {
         /// Mix name to remove.
-        name: String,
+        name: MixName,
     },
     /// Selects the global active mix layer.
     SelectGlobalActiveLayer {
         /// Mix name to activate globally.
-        mix: String,
+        mix: MixName,
     },
     /// Selects the active layer for a specific channel.
     SelectChannelActiveLayer {
         /// Target channel name.
-        channel: String,
+        channel: ChannelName,
         /// Target mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Adds a channel to a mix.
     AddChannelMix {
         /// Target channel name.
-        channel: String,
+        channel: ChannelName,
         /// Target mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Removes a channel from a mix.
     RemoveChannelMix {
         /// Target channel name.
-        channel: String,
+        channel: ChannelName,
         /// Target mix name.
-        mix: String,
+        mix: MixName,
     },
 }
 
@@ -84,9 +86,9 @@ pub enum StateChangeEvent {
     /// Gain changed for a channel within a mix.
     GainChanged {
         /// Affected channel name.
-        channel: String,
+        channel: ChannelName,
         /// Affected mix name.
-        mix: String,
+        mix: MixName,
         /// Linear gain multiplier.
         gain_linear: f32,
         /// Gain value in decibels.
@@ -95,56 +97,57 @@ pub enum StateChangeEvent {
     /// Mute state changed for a channel within a mix.
     MuteChanged {
         /// Affected channel name.
-        channel: String,
+        channel: ChannelName,
         /// Affected mix name.
-        mix: String,
+        mix: MixName,
         /// Whether the channel is muted.
         muted: bool,
     },
     /// Global active layer switched to a new mix.
     GlobalLayerSwitched {
         /// New active mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Active layer switched for a channel.
     ChannelLayerSwitched {
         /// Affected channel name.
-        channel: String,
-        /// New active mix name.
-        mix: String,
+        channel: ChannelName,
+        /// Affected mix name.
+        mix: MixName,
     },
     /// New channel created.
     ChannelAdded {
         /// Channel name.
-        channel: String,
+        channel: ChannelName,
     },
     /// Channel deleted.
     ChannelRemoved {
         /// Channel name.
-        channel: String,
+        channel: ChannelName,
     },
     /// New mix created.
     MixAdded {
         /// Mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Mix deleted.
     MixRemoved {
         /// Mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Channel associated with a mix.
     ChannelMixAdded {
         /// Channel name.
-        channel: String,
+        channel: ChannelName,
         /// Mix name.
-        mix: String,
+        mix: MixName,
     },
     /// Channel dissociated from a mix.
     ChannelMixRemoved {
         /// Channel name.
-        channel: String,
+        channel: ChannelName,
         /// Mix name.
-        mix: String,
+        mix: MixName,
     },
 }
+
