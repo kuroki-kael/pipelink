@@ -7,3 +7,4 @@ pub mod app;
 pub mod error;
 pub mod events;
 pub mod graph;
+pub mod types;
