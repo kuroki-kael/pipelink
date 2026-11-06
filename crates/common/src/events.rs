@@ -151,3 +151,60 @@ pub enum StateChangeEvent {
     },
 }
 
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::{ControlEvent, StateChangeEvent};
+    use crate::types::{ChannelName, MixName};
+
+    #[test]
+    fn test_control_event_json_format() {
+        let event = ControlEvent::SetChannelGain {
+            channel: ChannelName::from("mic"),
+            mix: MixName::from("headphones"),
+            db_value: -6.0,
+        };
+
+        assert_eq!(
+            serde_json::to_string(&event).unwrap(),
+            r#"{"type":"set_channel_gain","channel":"mic","mix":"headphones","db_value":-6.0}"#
+        );
+    }
+
+    #[test]
+    fn test_control_event_create_channel_json_format() {
+        let event = ControlEvent::CreateChannel {
+            name: ChannelName::from("mic"),
+        };
+
+        assert_eq!(
+            serde_json::to_string(&event).unwrap(),
+            r#"{"type":"create_channel","name":"mic"}"#
+        );
+    }
+
+    #[test]
+    fn test_state_change_event_json_format() {
+        let event = StateChangeEvent::ChannelAdded {
+            channel: ChannelName::from("mic"),
+        };
+
+        assert_eq!(
+            serde_json::to_string(&event).unwrap(),
+            r#"{"type":"channel_added","channel":"mic"}"#
+        );
+    }
+
+    #[test]
+    fn test_events_round_trip() {
+        let event = ControlEvent::AddChannelMix {
+            channel: ChannelName::from("mic"),
+            mix: MixName::from("headphones"),
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: ControlEvent = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed, event);
+    }
+}
