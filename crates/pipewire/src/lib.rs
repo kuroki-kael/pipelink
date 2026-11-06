@@ -10,8 +10,8 @@ mod loop_state;
 mod module_handle;
 mod pw_loop;
 
-pub use error::*;
-pub use events::*;
+pub use error::PipewireError;
+pub use events::PipewireEvent;
 pub(crate) use loop_state::LoopState;
 use pipelink_common::{
     graph::{
