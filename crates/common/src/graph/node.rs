@@ -31,13 +31,13 @@ pub struct Node {
 impl Node {
     /// Returns whether this node is considered ready.
     #[must_use]
-    pub fn is_ready(&self) -> bool {
+    pub(crate) fn is_ready(&self) -> bool {
         !self.name.is_empty() && self.serial.is_some() && !self.ports.is_empty()
     }
 
     /// Returns whether a port with the given direction and position is registered.
     #[must_use]
-    pub fn has_port(&self, direction: PortDirection, position: ChannelPosition) -> bool {
+    pub(crate) fn has_port(&self, direction: PortDirection, position: ChannelPosition) -> bool {
         self.ports
             .values()
             .any(|port| port.direction == direction && port.position == position)
