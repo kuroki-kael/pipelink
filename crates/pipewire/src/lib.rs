@@ -24,6 +24,7 @@ use pipelink_common::{
 };
 pub use pw_loop::PipewireService;
 
+/// Commands sent from the engine to the `PipeWire` background loop.
 #[derive(Debug, Clone)]
 pub enum Command {
     CreateLink {

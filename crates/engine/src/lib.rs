@@ -9,6 +9,10 @@ pub mod executor;
 
 pub use config::topology::{AudioChannel, AudioMix, ConfigGraph};
 
+/// In-memory state of the audio routing graph.
+///
+/// Owned by the [`Executor`](executor::Executor). The mix half of the graph
+/// (`mixes`, `active_mix`, `links`) is not wired up yet.
 #[derive(Clone, Debug, Default)]
 pub struct AudioGraph {
     pub channels: Vec<Channel>,
@@ -19,6 +23,7 @@ pub struct AudioGraph {
 }
 
 impl AudioGraph {
+    /// Creates an empty audio graph.
     #[must_use]
     pub fn new() -> Self {
         Self::default()

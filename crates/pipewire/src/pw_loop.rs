@@ -12,6 +12,7 @@ use tracing::{debug, error, warn};
 
 use crate::{Command, LoopState, PipewireEvent};
 
+/// Handle to the `PipeWire` background loop running in its own thread.
 pub struct PipewireService {
     /// Sender which the main thread uses to send commands
     cmd_tx: channel::Sender<Command>,
@@ -54,6 +55,7 @@ impl PipewireService {
         })
     }
 
+    /// Returns a sender for commands addressed to the background loop.
     #[must_use]
     pub fn command_sender(&self) -> channel::Sender<Command> {
         self.cmd_tx.clone()

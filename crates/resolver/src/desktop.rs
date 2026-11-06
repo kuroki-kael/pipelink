@@ -15,6 +15,7 @@ use tracing::debug;
 
 use crate::tokenize_cmdline;
 
+/// A single `.desktop` entry, parsed from a desktop file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopEntry {
     pub id: AppId,
@@ -32,6 +33,10 @@ pub struct DesktopEntry {
 }
 
 impl DesktopEntry {
+    /// Parses a `.desktop` file.
+    ///
+    /// Returns `None` if the file cannot be read or does not describe an
+    /// application entry.
     pub fn new(path: &Path) -> Option<Self> {
         let content = fs::read_to_string(path).ok()?;
         let id = AppId::from(path.file_stem()?.to_string_lossy().into_owned());
@@ -130,6 +135,8 @@ impl DesktopEntry {
     }
 }
 
+/// Index of all known `.desktop` entries, searchable by id, name, binary and
+/// window class.
 #[derive(Debug, Clone, Default)]
 pub struct DesktopDatabase {
     pub entries: Vec<DesktopEntry>,
@@ -150,6 +157,8 @@ fn normalize_app_id(id: &AppId) -> AppId {
 }
 
 impl DesktopDatabase {
+    /// Loads every `.desktop` entry from the standard XDG locations plus the
+    /// given additional directories.
     pub fn load_standard(custom_dirs: &[PathBuf]) -> Self {
         let mut dirs = Vec::new();
 
@@ -293,6 +302,7 @@ impl DesktopDatabase {
         self.entries.push(entry);
     }
 
+    /// Finds an entry by its Flatpak application id.
     pub fn find_by_flatpak_id(&self, flatpak_id: &AppId) -> Option<&DesktopEntry> {
         let key = normalize_app_id(flatpak_id);
         self.by_flatpak_id
@@ -301,26 +311,31 @@ impl DesktopDatabase {
             .map(|&idx| &self.entries[idx])
     }
 
+    /// Finds an entry by its desktop id.
     pub fn find_by_id(&self, id: &AppId) -> Option<&DesktopEntry> {
         let key = normalize_app_id(id);
         self.by_id.get(&key).map(|&idx| &self.entries[idx])
     }
 
+    /// Finds an entry by the binary its `Exec` line launches.
     pub fn find_by_binary(&self, bin: &str) -> Option<&DesktopEntry> {
         let key = bin.to_lowercase();
         self.by_exec_bin.get(&key).map(|&idx| &self.entries[idx])
     }
 
+    /// Finds an entry by its `StartupWMClass`.
     pub fn find_by_wm_class(&self, wm_class: &str) -> Option<&DesktopEntry> {
         let key = wm_class.to_lowercase();
         self.by_wm_class.get(&key).map(|&idx| &self.entries[idx])
     }
 
+    /// Finds an entry by its display name.
     pub fn find_by_name(&self, name: &str) -> Option<&DesktopEntry> {
         let key = name.to_lowercase();
         self.by_name.get(&key).map(|&idx| &self.entries[idx])
     }
 
+    /// Finds the entry that best matches a binary name, app id or window class.
     pub fn find_best_match(&self, hint: &str) -> Option<&DesktopEntry> {
         let clean = hint.trim();
         if clean.is_empty() {
@@ -356,6 +371,9 @@ impl DesktopDatabase {
         None
     }
 
+    /// Reloads the index if any watched directory changed on disk.
+    ///
+    /// Returns `true` if the index was rebuilt.
     pub fn reload_if_changed(&mut self) -> bool {
         let mut changed = false;
         for dir in &self.dirs {

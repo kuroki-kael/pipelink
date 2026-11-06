@@ -5,6 +5,7 @@
 
 use thiserror::Error;
 
+/// Errors raised by the audio engine while coordinating the routing graph.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ExecutorError {

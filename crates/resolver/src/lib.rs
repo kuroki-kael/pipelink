@@ -11,6 +11,7 @@ mod wrappers;
 pub use proc::is_process_alive;
 pub use service::ProcessResolver;
 
+/// Splits a raw command line into its arguments, honouring shell quoting.
 #[must_use]
 pub fn tokenize_cmdline(raw: &str) -> Vec<String> {
     let mut tokens = Vec::new();

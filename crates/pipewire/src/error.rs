@@ -5,6 +5,7 @@
 
 use thiserror::Error;
 
+/// Errors raised while creating or destroying `PipeWire` objects.
 #[derive(Debug, Error)]
 pub enum PipewireError {
     #[error("pipewire: {0}")]

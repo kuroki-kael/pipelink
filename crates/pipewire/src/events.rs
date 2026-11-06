@@ -8,6 +8,7 @@ use pipelink_common::types::{
     PortDirection, PortId,
 };
 
+/// Events emitted by the `PipeWire` background loop.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum PipewireEvent {

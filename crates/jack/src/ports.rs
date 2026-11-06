@@ -5,7 +5,9 @@
 
 use jack::{AudioIn, AudioOut, Port};
 
+/// Alias for [`ChannelInputPorts`].
 pub type ChannelPorts = ChannelInputPorts;
+/// Alias for [`MixOutputPorts`].
 pub type MixPorts = MixOutputPorts;
 
 /// Stereo input ports for a channel (e.g. "Game", "Music", "Voice").
@@ -16,6 +18,7 @@ pub struct ChannelInputPorts {
 }
 
 impl ChannelInputPorts {
+    /// Creates a stereo input port pair from two JACK ports.
     pub fn new(in_l: Port<AudioIn>, in_r: Port<AudioIn>) -> Self {
         Self { in_l, in_r }
     }
@@ -48,6 +51,7 @@ pub struct MixOutputPorts {
 }
 
 impl MixOutputPorts {
+    /// Creates a stereo output port pair from two JACK ports.
     pub fn new(out_l: Port<AudioOut>, out_r: Port<AudioOut>) -> Self {
         Self { out_l, out_r }
     }
