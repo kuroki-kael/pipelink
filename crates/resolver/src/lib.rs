@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-pub mod desktop;
+mod desktop;
 mod proc;
 pub mod service;
 mod wrappers;
@@ -13,7 +13,7 @@ pub use service::ProcessResolver;
 
 /// Splits a raw command line into its arguments, honouring shell quoting.
 #[must_use]
-pub fn tokenize_cmdline(raw: &str) -> Vec<String> {
+pub(crate) fn tokenize_cmdline(raw: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut cur = String::new();
     let mut in_single_quote = false;

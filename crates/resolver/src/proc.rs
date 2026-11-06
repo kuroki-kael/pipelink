@@ -79,7 +79,7 @@ fn clean_proc_path(path: &Path) -> PathBuf {
 /// # Errors
 /// Returns an [`io::Error`] if reading from `/proc` fails.
 #[allow(dead_code)]
-pub fn read_process_info(pid: Pid) -> io::Result<ProcessInfo> {
+pub(crate) fn read_process_info(pid: Pid) -> io::Result<ProcessInfo> {
     read_process_info_from_proc(Path::new("/proc"), pid)
 }
 
@@ -87,7 +87,7 @@ pub fn read_process_info(pid: Pid) -> io::Result<ProcessInfo> {
 ///
 /// # Errors
 /// Returns an [`io::Error`] if reading from `proc_dir` fails.
-pub fn read_process_info_from_proc(proc_dir: &Path, pid: Pid) -> io::Result<ProcessInfo> {
+pub(crate) fn read_process_info_from_proc(proc_dir: &Path, pid: Pid) -> io::Result<ProcessInfo> {
     let pid_dir = proc_dir.join(pid.to_string());
     if !pid_dir.exists() {
         return Err(io::Error::new(
@@ -194,7 +194,11 @@ fn parse_stat(_pid: Pid, stat_str: &str) -> (String, Option<Pid>, Option<StartTi
 
 /// Walks the process tree upwards from `pid` to collect its ancestry chain.
 /// Returns `[info(pid), info(parent), info(grandparent), ...]`.
-pub fn read_process_ancestry(proc_dir: &Path, pid: Pid, max_depth: usize) -> Vec<ProcessInfo> {
+pub(crate) fn read_process_ancestry(
+    proc_dir: &Path,
+    pid: Pid,
+    max_depth: usize,
+) -> Vec<ProcessInfo> {
     let mut chain = Vec::new();
     let mut current_pid = pid;
     let mut visited = HashSet::new();
@@ -225,7 +229,7 @@ pub fn read_process_ancestry(proc_dir: &Path, pid: Pid, max_depth: usize) -> Vec
 
 /// Checks if a process with the given PID is currently alive in `proc_dir`.
 #[must_use]
-pub fn is_process_alive_in(proc_dir: &Path, pid: Pid) -> bool {
+pub(crate) fn is_process_alive_in(proc_dir: &Path, pid: Pid) -> bool {
     proc_dir.join(pid.to_string()).exists()
 }
 
