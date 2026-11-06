@@ -5,6 +5,7 @@
 
 //! Audio routing topology models and configuration graph.
 
+use pipelink_common::types::{AppId, ChannelName, MixName, NodeName};
 use serde::{Deserialize, Serialize};
 
 /// A virtual Sink an app or microphone gets routed to.
@@ -12,13 +13,13 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub struct AudioChannel {
     /// Channel name.
-    pub name: String,
+    pub name: ChannelName,
     /// App identifiers routed to this channel.
     #[serde(default)]
-    pub apps: Vec<String>,
+    pub apps: Vec<AppId>,
     /// Optional physical input source.
     #[serde(default)]
-    pub source: Option<String>,
+    pub source: Option<NodeName>,
 }
 
 /// A consumer of one or more channels.
@@ -26,10 +27,10 @@ pub struct AudioChannel {
 #[serde(rename_all = "snake_case")]
 pub struct AudioMix {
     /// Mix name.
-    pub name: String,
+    pub name: MixName,
     /// Channels routed to mix.
     #[serde(default)]
-    pub channels: Vec<String>,
+    pub channels: Vec<ChannelName>,
 }
 
 /// In-memory and serialized representation of the audio routing graph.
@@ -38,10 +39,10 @@ pub struct AudioMix {
 pub struct ConfigGraph {
     /// Physical Sink name the active mix routes to.
     #[serde(default)]
-    pub output: Option<String>,
+    pub output: Option<NodeName>,
     /// Name of mix that goes to output.
     #[serde(default)]
-    pub active_mix: Option<String>,
+    pub active_mix: Option<MixName>,
     /// All defined channels.
     #[serde(default)]
     pub channels: Vec<AudioChannel>,
@@ -58,7 +59,7 @@ impl ConfigGraph {
     }
 
     /// Sets the active mix.
-    pub fn set_active_mix(&mut self, active_mix: impl Into<String>) {
+    pub fn set_active_mix(&mut self, active_mix: impl Into<MixName>) {
         self.active_mix = Some(active_mix.into());
     }
 
@@ -69,7 +70,7 @@ impl ConfigGraph {
     }
 
     /// Sets the physical output.
-    pub fn set_output(&mut self, output: impl Into<String>) {
+    pub fn set_output(&mut self, output: impl Into<NodeName>) {
         self.output = Some(output.into());
     }
 
@@ -80,7 +81,8 @@ impl ConfigGraph {
     }
 
     /// Adds a channel if it does not already exist.
-    pub fn add_channel(&mut self, name: String) {
+    pub fn add_channel(&mut self, name: impl Into<ChannelName>) {
+        let name = name.into();
         if !self.channels.iter().any(|c| c.name == name) {
             self.channels.push(AudioChannel {
                 name,
@@ -102,12 +104,13 @@ impl ConfigGraph {
 
     /// Returns all channel names.
     #[must_use]
-    pub fn get_all_channels(&self) -> Vec<String> {
+    pub fn get_all_channels(&self) -> Vec<ChannelName> {
         self.channels.iter().map(|c| c.name.clone()).collect()
     }
 
     /// Adds a mix if it does not already exist.
-    pub fn add_mix(&mut self, name: String) {
+    pub fn add_mix(&mut self, name: impl Into<MixName>) {
+        let name = name.into();
         if !self.mixes.iter().any(|c| c.name == name) {
             self.mixes.push(AudioMix {
                 name,
@@ -129,7 +132,7 @@ impl ConfigGraph {
 
     /// Returns all mix names.
     #[must_use]
-    pub fn get_all_mixes(&self) -> Vec<String> {
+    pub fn get_all_mixes(&self) -> Vec<MixName> {
         self.mixes.iter().map(|m| m.name.clone()).collect()
     }
 
@@ -139,7 +142,7 @@ impl ConfigGraph {
         if let (true, Some(mix)) = (channel_exists, self.get_mix_mut(mix_name))
             && !mix.channels.iter().any(|c| c == channel_name)
         {
-            mix.channels.push(channel_name.to_string());
+            mix.channels.push(ChannelName::from(channel_name));
             return true;
         }
         false
@@ -160,16 +163,18 @@ impl ConfigGraph {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use pipelink_common::types::ChannelName;
+
     use super::ConfigGraph;
 
     #[test]
     fn test_add_and_get_channels() {
         let mut graph = ConfigGraph::new();
-        graph.add_channel("mic".to_string());
-        graph.add_channel("game".to_string());
+        graph.add_channel("mic");
+        graph.add_channel("game");
 
         // Attempt duplicate addition
-        graph.add_channel("mic".to_string());
+        graph.add_channel("mic");
 
         assert_eq!(graph.channels.len(), 2);
         assert!(graph.get_channel("mic").is_some());
@@ -181,11 +186,11 @@ mod tests {
     #[test]
     fn test_add_and_get_mixes() {
         let mut graph = ConfigGraph::new();
-        graph.add_mix("headphones".to_string());
-        graph.add_mix("stream".to_string());
+        graph.add_mix("headphones");
+        graph.add_mix("stream");
 
         // Attempt duplicate addition
-        graph.add_mix("headphones".to_string());
+        graph.add_mix("headphones");
 
         assert_eq!(graph.mixes.len(), 2);
         assert!(graph.get_mix("headphones").is_some());
@@ -198,12 +203,12 @@ mod tests {
     fn test_channels_on_different_mixes_or_none() {
         let mut graph = ConfigGraph::new();
 
-        graph.add_channel("mic".to_string());
-        graph.add_channel("game".to_string());
-        graph.add_channel("unassigned".to_string());
+        graph.add_channel("mic");
+        graph.add_channel("game");
+        graph.add_channel("unassigned");
 
-        graph.add_mix("headphones".to_string());
-        graph.add_mix("stream".to_string());
+        graph.add_mix("headphones");
+        graph.add_mix("stream");
 
         assert!(graph.add_channel_to_mix("mic", "headphones"));
         assert!(graph.add_channel_to_mix("mic", "stream"));
@@ -216,15 +221,19 @@ mod tests {
         assert_eq!(stream.channels, vec!["mic"]);
 
         assert!(graph.get_channel("unassigned").is_some());
-        assert!(!headphones.channels.contains(&"unassigned".to_string()));
-        assert!(!stream.channels.contains(&"unassigned".to_string()));
+        assert!(
+            !headphones
+                .channels
+                .contains(&ChannelName::from("unassigned"))
+        );
+        assert!(!stream.channels.contains(&ChannelName::from("unassigned")));
     }
 
     #[test]
     fn test_add_channel_to_mix_validation() {
         let mut graph = ConfigGraph::new();
-        graph.add_channel("mic".to_string());
-        graph.add_mix("headphones".to_string());
+        graph.add_channel("mic");
+        graph.add_mix("headphones");
 
         assert!(!graph.add_channel_to_mix("phantom", "headphones"));
         assert!(!graph.add_channel_to_mix("mic", "phantom_mix"));
@@ -236,8 +245,8 @@ mod tests {
     #[test]
     fn test_remove_channel_from_mix() {
         let mut graph = ConfigGraph::new();
-        graph.add_channel("mic".to_string());
-        graph.add_mix("headphones".to_string());
+        graph.add_channel("mic");
+        graph.add_mix("headphones");
         graph.add_channel_to_mix("mic", "headphones");
 
         assert!(graph.remove_channel_from_mix("mic", "headphones"));

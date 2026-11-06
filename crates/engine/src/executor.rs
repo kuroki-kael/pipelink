@@ -8,11 +8,8 @@ use std::fmt;
 use pipelink_common::{
     error::ExecutorError,
     events::{ControlEvent, StateChangeEvent},
-    graph::{
-        app_node::AppNode,
-        channel::Channel,
-        node::{NativeNode, Node as PipewireNode},
-    },
+    graph::{app_node::AppNode, channel::Channel, node::Node},
+    types::{NodeId, NodeName},
 };
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::{is_process_alive, service::ProcessResolver};
@@ -42,12 +39,13 @@ impl fmt::Debug for Executor {
             .field("control_rx", &self.control_rx)
             .field("state_tx", &self.state_tx)
             .field("pw_service", &self.pw_service)
+            .field("resolver", &self.resolver)
             .finish_non_exhaustive()
     }
 }
 
 impl Executor {
-    /// Creates a new `Executor` instance.
+    /// Creates a new `Executor` instance from a static topology definition.
     ///
     /// # Errors
     /// Returns an [`ExecutorError`] if initializing the `PipeWire` service fails.
@@ -57,32 +55,29 @@ impl Executor {
         state_tx: Broadcast<StateChangeEvent>,
     ) -> Result<Self, ExecutorError> {
         // tokio mpsc for incoming pipewire events
-        let (pw_event_tx, pw_event_rx) = tokio::sync::mpsc::channel::<PipewireEvent>(100);
+        let (pw_event_tx, pw_event_rx) = tokio::sync::mpsc::channel(128);
 
         // start pipewire event loop in a dedicated background thread
         let pw_service = PipewireService::start(pw_event_tx)
             .map_err(|e| ExecutorError::Pipewire(e.to_string()))?;
-
-        let pw_cmd_tx = pw_service.command_sender();
-
-        let resolver = ProcessResolver::default();
+        let pw_tx = pw_service.command_sender();
 
         Ok(Self {
             config,
-            graph: AudioGraph::new(),
+            graph: AudioGraph::default(),
             control_rx,
             state_tx,
             pw_service: Some(pw_service),
-            pw_tx: pw_cmd_tx,
+            pw_tx,
             pw_rx: pw_event_rx,
-            resolver,
+            resolver: ProcessResolver::new(),
         })
     }
 
     /// Primary execution loop handling control inputs and pipewire events
     ///
     /// # Errors
-    /// Returns an [`ExecutorError`] if handling any event fails
+    /// Returns an [`ExecutorError`] if sending a command fails.
     pub async fn run(&mut self) -> Result<(), ExecutorError> {
         loop {
             tokio::select! {
@@ -93,11 +88,12 @@ impl Executor {
                     self.handle_pipewire_event(event);
                 }
                 else => {
-                    info!("All event channels closed, executor exiting");
                     break;
                 }
             }
         }
+
+        let _ = self.pw_service.take();
 
         Ok(())
     }
@@ -105,10 +101,11 @@ impl Executor {
     fn handle_control_event(&mut self, ctrl: ControlEvent) -> Result<(), ExecutorError> {
         match ctrl {
             ControlEvent::CreateChannel { name } => {
-                if self.graph.channels.iter().any(|c| c.get_name() == name) {
+                if self.graph.channels.iter().any(|c| c.name == name) {
                     warn!("Channel {} already exists", name);
                     return Ok(());
                 }
+
                 let channel = Channel::new(name.clone());
                 self.graph.channels.push(channel);
 
@@ -121,12 +118,7 @@ impl Executor {
                     .send(StateChangeEvent::ChannelAdded { channel: name });
             },
             ControlEvent::RemoveChannel { name } => {
-                if let Some(pos) = self
-                    .graph
-                    .channels
-                    .iter()
-                    .position(|c| c.get_name() == name)
-                {
+                if let Some(pos) = self.graph.channels.iter().position(|c| c.name == name) {
                     let channel = self.graph.channels.remove(pos);
 
                     self.pw_tx
@@ -136,11 +128,8 @@ impl Executor {
                     let _ = self
                         .state_tx
                         .send(StateChangeEvent::ChannelRemoved { channel: name });
-                } else {
-                    warn!("Channel {} not found", name);
                 }
             },
-
             ControlEvent::SetChannelGain { .. }
             | ControlEvent::SetChannelMute { .. }
             | ControlEvent::CreateMix { .. }
@@ -164,11 +153,12 @@ impl Executor {
                         .graph
                         .channels
                         .iter_mut()
-                        .find(|c| c.get_name() == channel_name)
+                        .find(|c| c.name == channel_name)
                 {
-                    ch.set_id(Some(id));
-                    ch.get_node_mut().set_serial(serial);
-                    info!("Channel '{channel_name}' has the id {id}");
+                    ch.node.name = name;
+                    ch.node.id = Some(id);
+                    ch.node.serial = serial;
+                    info!("Channel '{}' has the id {id}", ch.name);
                 }
             },
             PipewireEvent::PortAppeared {
@@ -176,21 +166,32 @@ impl Executor {
                 node_id,
                 direction,
                 channel,
-                node_name,
             } => {
-                if let Some(channel_name) = node_name.strip_prefix("pipelink.channel.")
-                    && let Some(ch) = self
-                        .graph
-                        .channels
-                        .iter_mut()
-                        .find(|c| c.get_name() == channel_name)
-                    && ch.on_port_appeared(id, node_id, &direction, &channel)
+                if let Some(ch) = self
+                    .graph
+                    .channels
+                    .iter_mut()
+                    .find(|c| c.node.id == Some(node_id))
+                    && ch.node.on_port_appeared(id, node_id, direction, channel)
                     && ch.is_ready()
                 {
-                    info!("Channel '{channel_name}' is ready");
+                    info!("Channel '{}' is ready", ch.name);
                 }
             },
-            PipewireEvent::NodeInfo { id, pid, nick, .. } => {
+            PipewireEvent::NodeInfo {
+                id, node_name, pid, ..
+            } => {
+                // Ignore internal PipeLink nodes (e.g. pipelink.channel.* or
+                // pipelink.mix.*)
+                if let Some(ref name) = node_name
+                    && name.starts_with("pipelink.")
+                {
+                    return;
+                }
+                if self.graph.channels.iter().any(|c| c.node.id == Some(id)) {
+                    return;
+                }
+
                 if let Some(pid) = pid
                     && let Some(app) = self.resolver.resolve(pid)
                 {
@@ -199,19 +200,16 @@ impl Executor {
                         app.display_name, app.app_name
                     );
 
-                    let mut node = PipewireNode::default();
-                    node.set_id(Some(id));
-                    if let Some(nick_str) = nick {
-                        node.set_name(&nick_str);
-                    } else {
-                        node.set_name(&app.app_name);
-                    }
+                    let name = node_name.unwrap_or_else(|| NodeName::from(app.app_name.as_str()));
 
-                    if let Some(existing) = self
-                        .graph
-                        .apps
-                        .iter_mut()
-                        .find(|a| a.node.get_id() == Some(id))
+                    let node = Node {
+                        id: Some(id),
+                        name,
+                        ..Default::default()
+                    };
+
+                    if let Some(existing) =
+                        self.graph.apps.iter_mut().find(|a| a.node.id == Some(id))
                     {
                         existing.app = app;
                         existing.node = node;
@@ -225,7 +223,7 @@ impl Executor {
                     .graph
                     .apps
                     .iter()
-                    .position(|a| a.node.get_id() == Some(id))
+                    .position(|a| a.node.id == Some(NodeId::from(id)))
                 {
                     let removed = self.graph.apps.remove(pos);
                     let pid = removed.app.pid;
