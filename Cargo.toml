@@ -34,15 +34,15 @@ pipelink-resolver = { path = "crates/resolver" }
 pipelink-common = { path = "crates/common" }
 
 # Audio
-jack = "0.13.5"
-pipewire = "0.10.1"
-pipewire-sys = "0.10.1"
+jack = { version = "0.13.5" }
+pipewire = { version = "0.10.1" }
+pipewire-sys = { version = "0.10.1" }
 
 # Logging & Error
-thiserror = "2.0.21"
-anyhow = "1.0.104"
-tracing = "0.1.44"
-tracing-journald = "0.3.2"
+thiserror = { version = "2.0.21" }
+anyhow = { version = "1.0.104" }
+tracing = { version = "0.1.44" }
+tracing-journald = { version = "0.3.2" }
 tracing-subscriber = { version = "0.3.23", features = [
     "env-filter",
     "fmt",
@@ -51,12 +51,12 @@ tracing-subscriber = { version = "0.3.23", features = [
 
 # CLI
 clap = { version = "4.6.7", features = ["derive"] }
-clap_complete = "4.6.11"
-clap_mangen = "0.3.3"
+clap_complete = { version = "4.6.11" }
+clap_mangen = { version = "0.3.3" }
 
 # Util
 tokio = { version = "1.53.1", features = ["full"] }
-parking_lot = "0.13.0"
+parking_lot = { version = "0.13.0" }
 serde = { version = "1.0.229", features = ["derive"] }
 
 [profile.dev]
