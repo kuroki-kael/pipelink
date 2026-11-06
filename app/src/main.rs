@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+mod daemon;
+
 use clap::{
     Parser, Subcommand,
     builder::{
@@ -34,6 +36,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
+    /// Runs the audio routing daemon
+    Daemon,
     /// Manage audio routes
     Route {
         #[command(subcommand)]
@@ -96,15 +100,21 @@ async fn main() {
             std::process::exit(1);
         }
     }
-    run_cli(args);
+    run_cli(args).await;
 }
 
-fn run_cli(args: Cli) {
+async fn run_cli(args: Cli) {
     if args.status {
         println!("Status");
     }
 
     match args.command {
+        Command::Daemon => {
+            if let Err(e) = daemon::run().await {
+                eprintln!("Daemon beendet mit Fehler: {e}");
+                std::process::exit(1);
+            }
+        },
         Command::Route { action } => match action {
             RouteAction::List => println!("Listing active audio routes..."),
             RouteAction::Set {

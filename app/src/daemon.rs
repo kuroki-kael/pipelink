@@ -2,26 +2,23 @@
  * Copyright (c) 2026 Kuroki-Kael / PipeLink Contributors.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-use pipelink::{
-    common::events::ControlEvent,
-    config::topology::ConfigGraph,
-    engine::{AudioGraph, executor::Executor},
-};
+use pipelink_common::events::ControlEvent;
+use pipelink_engine::{ConfigGraph, executor::Executor};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+/// Runs the audio routing daemon until the executor stops.
+///
+/// # Errors
+/// Returns an error if the executor cannot be created or fails while running.
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    if let Err(e) = tracing_subscriber::fmt::try_init() {
+        eprintln!("Tracing-Subscriber nicht initialisierbar: {e}");
+    }
     println!("Starte Audio-Routing Daemon...");
 
     let (control_tx, control_rx) = tokio::sync::mpsc::channel(32);
     let (state_tx, mut state_rx) = tokio::sync::broadcast::channel(32);
 
-    let mut executor = Executor::new(
-        ConfigGraph::default(),
-        AudioGraph::default(),
-        control_rx,
-        state_tx,
-    )?;
+    let mut executor = Executor::new(ConfigGraph::default(), control_rx, state_tx)?;
 
     // Test-Task: Schickt nach 500ms CreateChannel und nach weiteren 500ms RemoveChannel
     tokio::spawn(async move {
