@@ -9,7 +9,10 @@ use std::{
     sync::{Arc, PoisonError, RwLock},
 };
 
-use pipelink_common::app::{App, WrapperKind};
+use pipelink_common::{
+    app::{App, WrapperKind},
+    types::{Pid, StartTime},
+};
 use tracing::debug;
 
 use crate::{
@@ -45,7 +48,7 @@ impl Default for ResolverConfig {
 #[derive(Debug, Clone)]
 struct CacheEntry {
     app: Arc<App>,
-    start_time: u64,
+    start_time: Option<StartTime>,
 }
 
 /// High-performance process inspector and resolution service.
@@ -56,7 +59,7 @@ struct CacheEntry {
 pub struct ProcessResolver {
     config: ResolverConfig,
     desktop_db: Arc<RwLock<DesktopDatabase>>,
-    cache: RwLock<HashMap<u32, CacheEntry>>,
+    cache: RwLock<HashMap<Pid, CacheEntry>>,
 }
 
 impl Default for ProcessResolver {
@@ -66,7 +69,7 @@ impl Default for ProcessResolver {
 }
 
 impl ProcessResolver {
-    /// Creates a new [`ProcessResolver`] with default configuration.
+    /// Creates a new resolver with default configuration.
     #[must_use]
     pub fn new() -> Self {
         Self::with_config(ResolverConfig::default())
@@ -88,13 +91,14 @@ impl ProcessResolver {
     /// If the process was previously resolved and is still alive with the same
     /// start time, this returns a cheap [`Arc`] clone from memory cache in $O(1)$.
     #[must_use]
-    pub fn resolve(&self, pid: u32) -> Option<Arc<App>> {
+    pub fn resolve(&self, pid: impl Into<Pid>) -> Option<Arc<App>> {
+        let pid = pid.into();
         // 1. Fast Cache Check
         if let Ok(cache) = self.cache.read()
             && let Some(entry) = cache.get(&pid)
             && is_process_alive_in(&self.config.proc_dir, pid)
             && let Ok(info) = read_process_info_from_proc(&self.config.proc_dir, pid)
-            && (info.start_time == Some(entry.start_time) || entry.start_time == 0)
+            && (info.start_time == entry.start_time || entry.start_time.is_none())
         {
             return Some(Arc::clone(&entry.app));
         }
@@ -107,8 +111,7 @@ impl ProcessResolver {
         if let Ok(mut cache) = self.cache.write() {
             let start_time = read_process_info_from_proc(&self.config.proc_dir, pid)
                 .ok()
-                .and_then(|info| info.start_time)
-                .unwrap_or(0);
+                .and_then(|info| info.start_time);
 
             cache.insert(
                 pid,
@@ -125,7 +128,8 @@ impl ProcessResolver {
     /// Resolves the application directly from `/proc` without consulting or updating the
     /// cache.
     #[must_use]
-    pub fn resolve_uncached(&self, pid: u32) -> Option<App> {
+    pub fn resolve_uncached(&self, pid: impl Into<Pid>) -> Option<App> {
+        let pid = pid.into();
         debug!("Resolving process {pid}");
         let proc = read_process_info_from_proc(&self.config.proc_dir, pid).ok()?;
         let ancestry =
@@ -235,7 +239,7 @@ impl ProcessResolver {
         }
     }
 
-    fn build_resolved(original_pid: u32, proc: &ProcessInfo, unwrapped: UnwrappedApp) -> App {
+    fn build_resolved(original_pid: Pid, proc: &ProcessInfo, unwrapped: UnwrappedApp) -> App {
         let display_name = unwrapped
             .display_name
             .unwrap_or_else(|| capitalize(&unwrapped.app_name));
@@ -259,7 +263,8 @@ impl ProcessResolver {
     }
 
     /// Removes cached information for a specific process ID.
-    pub fn invalidate(&self, pid: u32) {
+    pub fn invalidate(&self, pid: impl Into<Pid>) {
+        let pid = pid.into().0;
         if let Ok(mut cache) = self.cache.write() {
             cache.remove(&pid);
         }

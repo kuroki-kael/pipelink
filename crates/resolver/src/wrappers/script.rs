@@ -5,6 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
+use pipelink_common::types::AppId;
+
 use crate::{
     desktop::DesktopDatabase,
     proc::ProcessInfo,
@@ -56,7 +58,7 @@ fn build_snap_app(
     desktop_db: &DesktopDatabase,
 ) -> UnwrappedApp {
     let desktop_entry = desktop_db
-        .find_by_id(&format!("{snap_name}_{snap_name}"))
+        .find_by_id(&AppId::from(format!("{snap_name}_{snap_name}")))
         .or_else(|| desktop_db.find_best_match(snap_name));
 
     let display_name = desktop_entry
@@ -69,7 +71,7 @@ fn build_snap_app(
         display_name,
         wrapper: WrapperKind::Snap,
         binary_path: proc.exe.clone(),
-        app_id: Some(snap_name.to_string()),
+        app_id: Some(AppId::from(snap_name)),
         icon: desktop_entry.and_then(|e| e.icon.clone()),
         desktop_file: desktop_entry.map(|e| e.path.clone()),
         categories: desktop_entry
@@ -217,13 +219,15 @@ fn capitalize_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use pipelink_common::types::{Pid, StartTime};
+
     use super::*;
 
     #[test]
     fn test_java_app() {
         let proc = ProcessInfo {
-            pid: 100,
-            ppid: Some(1),
+            pid: Pid(100),
+            ppid: Some(Pid(1)),
             comm: "java".to_string(),
             exe: Some(PathBuf::from("/usr/bin/java")),
             cmdline: vec![
@@ -233,7 +237,7 @@ mod tests {
             ],
             environ: std::collections::HashMap::default(),
             cgroup: None,
-            start_time: Some(1234),
+            start_time: Some(StartTime(1234)),
             cwd: None,
             root_dir: PathBuf::from("/"),
         };

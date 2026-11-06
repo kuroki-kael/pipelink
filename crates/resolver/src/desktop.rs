@@ -10,13 +10,14 @@ use std::{
     time::SystemTime,
 };
 
+use pipelink_common::types::AppId;
 use tracing::debug;
 
 use crate::tokenize_cmdline;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopEntry {
-    pub id: String,
+    pub id: AppId,
     pub path: PathBuf,
     pub name: String,
     pub generic_name: Option<String>,
@@ -26,14 +27,14 @@ pub struct DesktopEntry {
     pub exec_bin: Option<String>,
     pub startup_wm_class: Option<String>,
     pub categories: Vec<String>,
-    pub x_flatpak: Option<String>,
+    pub x_flatpak: Option<AppId>,
     pub no_display: bool,
 }
 
 impl DesktopEntry {
     pub fn new(path: &Path) -> Option<Self> {
         let content = fs::read_to_string(path).ok()?;
-        let id = path.file_stem()?.to_string_lossy().to_string();
+        let id = AppId::from(path.file_stem()?.to_string_lossy().into_owned());
 
         let mut name = None;
         let mut generic_name = None;
@@ -71,7 +72,7 @@ impl DesktopEntry {
                     "Categories" => {
                         categories = val.split(';').map(ToString::to_string).collect();
                     },
-                    "X-Flatpak" => x_flatpak = Some(val.to_string()),
+                    "X-Flatpak" => x_flatpak = Some(AppId::from(val)),
                     "NoDisplay" => no_display = val.eq_ignore_ascii_case("true"),
                     _ => {},
                 }
@@ -84,7 +85,7 @@ impl DesktopEntry {
             return None;
         }
 
-        let name = name.unwrap_or_else(|| id.clone());
+        let name = name.unwrap_or_else(|| id.0.clone());
 
         let exec_bin = exec.as_ref().and_then(|cmd| Self::extract_exec_binary(cmd));
 
@@ -132,13 +133,20 @@ impl DesktopEntry {
 #[derive(Debug, Clone, Default)]
 pub struct DesktopDatabase {
     pub entries: Vec<DesktopEntry>,
-    by_id: HashMap<String, usize>,
-    by_flatpak_id: HashMap<String, usize>,
+    by_id: HashMap<AppId, usize>,
+    by_flatpak_id: HashMap<AppId, usize>,
     by_wm_class: HashMap<String, usize>,
     by_exec_bin: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
     dirs: Vec<PathBuf>,
     dir_mtimes: HashMap<PathBuf, SystemTime>,
+}
+
+/// Normalizes an application id for lookups: lower-cased and without a
+/// trailing `.desktop` suffix.
+fn normalize_app_id(id: &AppId) -> AppId {
+    let lower = id.0.to_lowercase();
+    AppId::from(lower.strip_suffix(".desktop").unwrap_or(&lower))
 }
 
 impl DesktopDatabase {
@@ -216,7 +224,7 @@ impl DesktopDatabase {
                 }
 
                 let id = match path.file_stem().and_then(|i| i.to_str()) {
-                    Some(id) => id.to_string(),
+                    Some(id) => AppId::from(id),
                     None => continue,
                 };
 
@@ -243,12 +251,11 @@ impl DesktopDatabase {
     fn add_entry(&mut self, entry: DesktopEntry) {
         let idx = self.entries.len();
 
-        let id_lower = entry.id.to_lowercase();
-        self.by_id.entry(id_lower).or_insert(idx);
+        self.by_id.entry(normalize_app_id(&entry.id)).or_insert(idx);
 
         if let Some(flatpak_id) = &entry.x_flatpak {
             self.by_flatpak_id
-                .entry(flatpak_id.to_lowercase())
+                .entry(normalize_app_id(flatpak_id))
                 .or_insert(idx);
         }
 
@@ -262,7 +269,7 @@ impl DesktopDatabase {
             let key = bin.to_lowercase();
 
             let is_direct_match =
-                entry.id.to_lowercase().ends_with(&key) || entry.name.eq_ignore_ascii_case(&key);
+                entry.id.0.to_lowercase().ends_with(&key) || entry.name.eq_ignore_ascii_case(&key);
 
             match self.by_exec_bin.get(&key) {
                 None => {
@@ -270,7 +277,7 @@ impl DesktopDatabase {
                 },
                 Some(&existing_idx) => {
                     let existing_entry = &self.entries[existing_idx];
-                    let existing_is_direct = existing_entry.id.to_lowercase().ends_with(&key)
+                    let existing_is_direct = existing_entry.id.0.to_lowercase().ends_with(&key)
                         || existing_entry.name.eq_ignore_ascii_case(&key);
 
                     if is_direct_match && !existing_is_direct {
@@ -286,16 +293,16 @@ impl DesktopDatabase {
         self.entries.push(entry);
     }
 
-    pub fn find_by_flatpak_id(&self, flatpak_id: &str) -> Option<&DesktopEntry> {
-        let key = flatpak_id.to_lowercase();
+    pub fn find_by_flatpak_id(&self, flatpak_id: &AppId) -> Option<&DesktopEntry> {
+        let key = normalize_app_id(flatpak_id);
         self.by_flatpak_id
             .get(&key)
             .or_else(|| self.by_id.get(&key))
             .map(|&idx| &self.entries[idx])
     }
 
-    pub fn find_by_id(&self, id: &str) -> Option<&DesktopEntry> {
-        let key = id.strip_suffix(".desktop").unwrap_or(id).to_lowercase();
+    pub fn find_by_id(&self, id: &AppId) -> Option<&DesktopEntry> {
+        let key = normalize_app_id(id);
         self.by_id.get(&key).map(|&idx| &self.entries[idx])
     }
 
@@ -320,10 +327,12 @@ impl DesktopDatabase {
             return None;
         }
 
-        if let Some(entry) = self.find_by_flatpak_id(clean) {
+        let app_id = AppId::from(clean);
+
+        if let Some(entry) = self.find_by_flatpak_id(&app_id) {
             return Some(entry);
         }
-        if let Some(entry) = self.find_by_id(clean) {
+        if let Some(entry) = self.find_by_id(&app_id) {
             return Some(entry);
         }
         if let Some(entry) = self.find_by_name(clean) {
@@ -338,7 +347,7 @@ impl DesktopDatabase {
 
         let hint_lower = clean.to_lowercase();
         for entry in &self.entries {
-            let id_lower = entry.id.to_lowercase();
+            let id_lower = entry.id.0.to_lowercase();
             if id_lower.ends_with(&format!(".{hint_lower}")) || id_lower == hint_lower {
                 return Some(entry);
             }

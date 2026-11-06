@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use pipelink_common::types::{AppId, SteamAppId};
+
 use crate::{
     desktop::DesktopDatabase,
     proc::ProcessInfo,
@@ -77,7 +79,7 @@ pub fn inspect_wine(
     }
 
     let mut steam_game_name = None;
-    if let Some(app_id) = &steam_app_id
+    if let Some(app_id) = steam_app_id
         && let Some(name) = resolve_steam_app_name(app_id)
     {
         steam_game_name = Some(name);
@@ -94,7 +96,7 @@ pub fn inspect_wine(
     let display_name =
         steam_game_name.or_else(|| target_exe.as_ref().map(|exe| format_exe_display_name(exe)));
 
-    let app_id = steam_app_id.map(|id| format!("steam_{id}"));
+    let app_id: Option<AppId> = steam_app_id.map(SteamAppId::to_app_id);
 
     let desktop_entry = desktop_db
         .find_best_match(&app_name)
@@ -124,23 +126,31 @@ pub fn inspect_wine(
     })
 }
 
+/// Parses a Steam application id from an environment variable value.
+///
+/// Steam exposes the id as a plain number; values that do not parse are
+/// discarded instead of being propagated into the app id namespace.
+fn parse_steam_app_id(raw: &str) -> Option<SteamAppId> {
+    raw.trim().parse::<SteamAppId>().ok()
+}
+
 fn check_is_wine_process(
     proc: &ProcessInfo,
     is_proton: &mut bool,
-    steam_app_id: &mut Option<String>,
+    steam_app_id: &mut Option<SteamAppId>,
 ) -> bool {
     let mut detected = false;
 
-    if let Some(app_id) = proc.environ.get("STEAM_COMPAT_APP_ID") {
+    if let Some(raw) = proc.environ.get("STEAM_COMPAT_APP_ID") {
         *is_proton = true;
         detected = true;
         if steam_app_id.is_none() {
-            *steam_app_id = Some(app_id.clone());
+            *steam_app_id = parse_steam_app_id(raw);
         }
-    } else if let Some(app_id) = proc.environ.get("SteamAppId") {
+    } else if let Some(raw) = proc.environ.get("SteamAppId") {
         detected = true;
         if steam_app_id.is_none() {
-            *steam_app_id = Some(app_id.clone());
+            *steam_app_id = parse_steam_app_id(raw);
         }
     }
 
@@ -238,7 +248,7 @@ fn format_exe_display_name(exe: &str) -> String {
     }
 }
 
-fn resolve_steam_app_name(app_id: &str) -> Option<String> {
+fn resolve_steam_app_name(app_id: SteamAppId) -> Option<String> {
     let manifest_name = format!("appmanifest_{app_id}.acf");
     let mut candidate_dirs = Vec::new();
 
@@ -291,5 +301,18 @@ mod tests {
     fn test_clean_exe_name() {
         assert_eq!(clean_exe_name("reaper.exe"), "reaper");
         assert_eq!(clean_exe_name("CYBERPUNK2077.EXE"), "cyberpunk2077");
+    }
+
+    #[test]
+    fn test_parse_steam_app_id() {
+        assert_eq!(parse_steam_app_id("620"), Some(SteamAppId(620)));
+        assert_eq!(parse_steam_app_id(" 620 "), Some(SteamAppId(620)));
+        assert_eq!(parse_steam_app_id(""), None);
+        assert_eq!(parse_steam_app_id("not-a-number"), None);
+    }
+
+    #[test]
+    fn test_steam_app_id_to_app_id() {
+        assert_eq!(SteamAppId(620).to_app_id(), AppId::from("steam_620"));
     }
 }

@@ -9,14 +9,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use pipelink_common::types::{Pid, StartTime};
+
 use crate::tokenize_cmdline;
 
 /// Extracted process information from `/proc/[pid]`.
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessInfo {
-    pub pid: u32,
-    pub ppid: Option<u32>,
-    pub start_time: Option<u64>,
+    pub pid: Pid,
+    pub ppid: Option<Pid>,
+    pub start_time: Option<StartTime>,
     pub comm: String,
     pub exe: Option<PathBuf>,
     pub cmdline: Vec<String>,
@@ -77,7 +79,7 @@ fn clean_proc_path(path: &Path) -> PathBuf {
 /// # Errors
 /// Returns an [`io::Error`] if reading from `/proc` fails.
 #[allow(dead_code)]
-pub fn read_process_info(pid: u32) -> io::Result<ProcessInfo> {
+pub fn read_process_info(pid: Pid) -> io::Result<ProcessInfo> {
     read_process_info_from_proc(Path::new("/proc"), pid)
 }
 
@@ -85,7 +87,7 @@ pub fn read_process_info(pid: u32) -> io::Result<ProcessInfo> {
 ///
 /// # Errors
 /// Returns an [`io::Error`] if reading from `proc_dir` fails.
-pub fn read_process_info_from_proc(proc_dir: &Path, pid: u32) -> io::Result<ProcessInfo> {
+pub fn read_process_info_from_proc(proc_dir: &Path, pid: Pid) -> io::Result<ProcessInfo> {
     let pid_dir = proc_dir.join(pid.to_string());
     if !pid_dir.exists() {
         return Err(io::Error::new(
@@ -167,7 +169,7 @@ pub fn read_process_info_from_proc(proc_dir: &Path, pid: u32) -> io::Result<Proc
 }
 
 /// Parses `/proc/[pid]/stat` to extract `comm`, `ppid`, and `start_time` (field 22).
-fn parse_stat(_pid: u32, stat_str: &str) -> (String, Option<u32>, Option<u64>) {
+fn parse_stat(_pid: Pid, stat_str: &str) -> (String, Option<Pid>, Option<StartTime>) {
     // Format: pid (comm) state ppid ... starttime
     let Some(open_paren) = stat_str.find('(') else {
         return (String::new(), None, None);
@@ -184,21 +186,21 @@ fn parse_stat(_pid: u32, stat_str: &str) -> (String, Option<u32>, Option<u64>) {
     let rest = stat_str[close_paren + 1..].trim();
     let fields: Vec<&str> = rest.split_whitespace().collect();
 
-    let ppid = fields.get(1).and_then(|s| s.parse::<u32>().ok());
-    let start_time = fields.get(19).and_then(|s| s.parse::<u64>().ok());
+    let ppid = fields.get(1).and_then(|s| s.parse::<Pid>().ok());
+    let start_time = fields.get(19).and_then(|s| s.parse::<StartTime>().ok());
 
     (comm, ppid, start_time)
 }
 
 /// Walks the process tree upwards from `pid` to collect its ancestry chain.
 /// Returns `[info(pid), info(parent), info(grandparent), ...]`.
-pub fn read_process_ancestry(proc_dir: &Path, pid: u32, max_depth: usize) -> Vec<ProcessInfo> {
+pub fn read_process_ancestry(proc_dir: &Path, pid: Pid, max_depth: usize) -> Vec<ProcessInfo> {
     let mut chain = Vec::new();
     let mut current_pid = pid;
     let mut visited = HashSet::new();
 
     while chain.len() < max_depth {
-        if visited.contains(&current_pid) || current_pid == 0 || current_pid == 1 {
+        if visited.contains(&current_pid) || current_pid == Pid(0) || current_pid == Pid(1) {
             break;
         }
         visited.insert(current_pid);
@@ -208,7 +210,7 @@ pub fn read_process_ancestry(proc_dir: &Path, pid: u32, max_depth: usize) -> Vec
                 let next_pid = info.ppid;
                 chain.push(info);
                 match next_pid {
-                    Some(parent) if parent != current_pid && parent > 1 => {
+                    Some(parent) if parent != current_pid && parent.0 > 1 => {
                         current_pid = parent;
                     },
                     _ => break,
@@ -223,13 +225,13 @@ pub fn read_process_ancestry(proc_dir: &Path, pid: u32, max_depth: usize) -> Vec
 
 /// Checks if a process with the given PID is currently alive in `proc_dir`.
 #[must_use]
-pub fn is_process_alive_in(proc_dir: &Path, pid: u32) -> bool {
+pub fn is_process_alive_in(proc_dir: &Path, pid: Pid) -> bool {
     proc_dir.join(pid.to_string()).exists()
 }
 
 /// Checks if a process with the given PID is currently alive on the system.
 #[must_use]
-pub fn is_process_alive(pid: u32) -> bool {
+pub fn is_process_alive(pid: Pid) -> bool {
     is_process_alive_in(Path::new("/proc"), pid)
 }
 
@@ -249,9 +251,9 @@ mod tests {
     #[test]
     fn test_parse_stat() {
         let sample = "1234 (bash) S 1000 1234 1234 0 -1 4194304 300 0 0 0 10 5 0 0 20 0 1 0 54321 1234567 100";
-        let (comm, ppid, start_time) = parse_stat(1234, sample);
+        let (comm, ppid, start_time) = parse_stat(Pid(1234), sample);
         assert_eq!(comm, "bash");
-        assert_eq!(ppid, Some(1000));
-        assert_eq!(start_time, Some(54321));
+        assert_eq!(ppid, Some(Pid(1000)));
+        assert_eq!(start_time, Some(StartTime(54321)));
     }
 }

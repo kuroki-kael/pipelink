@@ -10,7 +10,10 @@
 
 use std::path::PathBuf;
 
-use pipelink_common::app::WrapperKind;
+use pipelink_common::{
+    app::WrapperKind,
+    types::{AppId, Pid},
+};
 
 pub mod electron;
 pub mod flatpak;
@@ -21,7 +24,7 @@ pub mod wine;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnwrappedApp {
     /// The actual target PID representing the main application
-    pub target_pid: u32,
+    pub target_pid: Pid,
     /// Canonical short application name (e.g. "streamcontroller", "reaper", "discord")
     pub app_name: String,
     /// Clean display name if determined
@@ -31,7 +34,7 @@ pub struct UnwrappedApp {
     /// Resolved binary path (host path, or Windows executable path)
     pub binary_path: Option<PathBuf>,
     /// Application ID if known (e.g. Flatpak ID or Steam App ID)
-    pub app_id: Option<String>,
+    pub app_id: Option<AppId>,
     /// Icon name or path
     pub icon: Option<String>,
     /// Desktop entry file path if matched

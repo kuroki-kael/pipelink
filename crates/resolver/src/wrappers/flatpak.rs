@@ -5,6 +5,8 @@
 
 use std::{fs, path::Path};
 
+use pipelink_common::types::{AppId, Pid};
+
 use crate::{
     desktop::DesktopDatabase,
     proc::ProcessInfo,
@@ -135,12 +137,13 @@ fn extract_flatpak_id_from_cmdline(cmdline: &[String]) -> Option<String> {
 
 /// Constructs the `UnwrappedApp` from the resolved Flatpak App ID.
 fn build_flatpak_app(
-    target_pid: u32,
+    target_pid: Pid,
     flatpak_id: &str,
     proc: &ProcessInfo,
     desktop_db: &DesktopDatabase,
 ) -> UnwrappedApp {
-    let desktop_entry = desktop_db.find_by_flatpak_id(flatpak_id);
+    let flatpak_app_id = AppId::from(flatpak_id);
+    let desktop_entry = desktop_db.find_by_flatpak_id(&flatpak_app_id);
 
     let display_name = desktop_entry.map(|e| e.name.clone()).or_else(|| {
         flatpak_id
@@ -174,7 +177,7 @@ fn build_flatpak_app(
         display_name,
         wrapper: WrapperKind::Flatpak,
         binary_path: proc.exe.clone(),
-        app_id: Some(flatpak_id.to_string()),
+        app_id: Some(flatpak_app_id),
         icon,
         desktop_file,
         categories,
