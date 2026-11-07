@@ -23,10 +23,21 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Test-Task: Schickt nach 500ms CreateChannel und nach weiteren 500ms RemoveChannel
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        println!("🚀 Sende CreateChannel für 'test'...");
+        println!("🚀 Sende CreateChannel für 'test1'...");
         if let Err(e) = control_tx
             .send(ControlEvent::CreateChannel {
-                name: "test".into(),
+                name: "test1".into(),
+            })
+            .await
+        {
+            eprintln!("Fehler beim Senden von CreateChannel: {e:?}");
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        println!("🚀 Sende CreateMix für 'test2'...");
+        if let Err(e) = control_tx
+            .send(ControlEvent::CreateMix {
+                name: "test2".into(),
             })
             .await
         {
@@ -34,10 +45,21 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
-        println!("🗑️ Sende RemoveChannel für 'test'...");
+        println!("🗑️ Sende RemoveChannel für 'test1'...");
         if let Err(e) = control_tx
             .send(ControlEvent::RemoveChannel {
-                name: "test".into(),
+                name: "test1".into(),
+            })
+            .await
+        {
+            eprintln!("Fehler beim Senden von RemoveChannel: {e:?}");
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+        println!("🗑️ Sende RemoveMix für 'test2'...");
+        if let Err(e) = control_tx
+            .send(ControlEvent::RemoveMix {
+                name: "test2".into(),
             })
             .await
         {
