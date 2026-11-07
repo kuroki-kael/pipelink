@@ -5,16 +5,14 @@
 
 use pipewire_sys::pw_impl_module;
 
-#[allow(dead_code)]
 #[derive(Debug)]
-pub(crate) struct ModuleHandle(pub(crate) *mut pw_impl_module);
+pub(crate) struct ModuleHandle(*mut pw_impl_module);
 
-// SAFETY: pw_impl_module is context-bound; sending the handle across threads
-// requires holding the context lock or ensuring single-threaded event loop access.
-#[allow(unsafe_code)]
-unsafe impl Send for ModuleHandle {}
-#[allow(unsafe_code)]
-unsafe impl Sync for ModuleHandle {}
+impl ModuleHandle {
+    pub(crate) fn new(ptr: *mut pw_impl_module) -> Self {
+        Self(ptr)
+    }
+}
 
 impl Drop for ModuleHandle {
     fn drop(&mut self) {

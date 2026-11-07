@@ -5,9 +5,9 @@
 use std::ffi::CString;
 
 use pipelink_common::types::{ChannelName, MixName};
-use pipewire::{context::ContextBox, core::Core, node::Node, properties::properties};
+use pipewire::{context::Context, core::Core, node::Node, properties::properties};
 
-use crate::error::PipewireError;
+use crate::{error::PipewireError, module_handle::ModuleHandle};
 
 pub(crate) fn create_null_sink(core: &Core, name: &ChannelName) -> Result<Node, PipewireError> {
     let props = properties!(
@@ -27,14 +27,13 @@ pub(crate) fn create_null_sink(core: &Core, name: &ChannelName) -> Result<Node, 
 }
 
 #[allow(
-    dead_code,
     unsafe_code,
     reason = "PipeWire C API pw_context_load_module does not have a safe wrapper in pipewire-rs"
 )]
 pub(crate) fn create_loopback(
-    context: &ContextBox,
+    context: &Context,
     name: &MixName,
-) -> Result<*mut pipewire_sys::pw_impl_module, PipewireError> {
+) -> Result<ModuleHandle, PipewireError> {
     if !name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -89,5 +88,5 @@ pub(crate) fn create_loopback(
         )));
     }
 
-    Ok(module_ptr)
+    Ok(ModuleHandle::new(module_ptr))
 }

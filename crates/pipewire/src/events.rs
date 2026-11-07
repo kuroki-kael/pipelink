@@ -4,8 +4,8 @@
  */
 
 use pipelink_common::types::{
-    ChannelPosition, GlobalId, LinkId, MediaClass, NodeId, NodeName, NodeSerial, Pid,
-    PortDirection, PortId,
+    ChannelName, ChannelPosition, GlobalId, LinkId, MediaClass, MixName, NodeId, NodeName,
+    NodeSerial, Pid, PortDirection, PortId,
 };
 
 /// Events emitted by the `PipeWire` background loop.
@@ -98,5 +98,21 @@ pub enum PipewireEvent {
 
     GlobalRemoved {
         id: GlobalId,
+    },
+
+    /// The sink backing a channel could not be created.
+    ChannelCreationFailed {
+        /// Name of the channel that could not be created.
+        name: ChannelName,
+        /// Human readable reason of the failure.
+        reason: String,
+    },
+
+    /// The loopback backing a mix could not be created.
+    MixCreationFailed {
+        /// Name of the mix that could not be created.
+        name: MixName,
+        /// Human readable reason of the failure.
+        reason: String,
     },
 }

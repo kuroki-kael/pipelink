@@ -5,10 +5,11 @@
 use std::{any::Any, cell::RefCell, collections::HashMap};
 
 use pipelink_common::types::{
-    ChannelName, ChannelPosition, GlobalId, MediaClass, NodeId, NodeName, NodeSerial, Pid,
+    ChannelName, ChannelPosition, GlobalId, MediaClass, MixName, NodeId, NodeName, NodeSerial, Pid,
     PortDirection, PortId,
 };
 use pipewire::{
+    context::Context,
     core::Core,
     metadata::Metadata,
     node::Node,
@@ -19,13 +20,14 @@ use pipewire::{
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, warn};
 
-use crate::{Command, PipewireEvent, factory};
+use crate::{Command, PipewireEvent, factory, module_handle::ModuleHandle};
 
 type StreamListenerEntry = (Node, Box<dyn Any>);
 
 #[derive(Default)]
 pub(crate) struct LoopState {
     active_nodes: RefCell<HashMap<ChannelName, Node>>,
+    active_modules: RefCell<HashMap<MixName, ModuleHandle>>,
     default_metadata: RefCell<Option<Metadata>>,
     stream_listeners: RefCell<HashMap<NodeId, StreamListenerEntry>>,
 }
@@ -36,7 +38,14 @@ impl LoopState {
         Self::default()
     }
 
-    pub(crate) fn handle_pipewire_command(&self, cmd: Command, core: &Core, registry: &RegistryRc) {
+    pub(crate) fn handle_pipewire_command(
+        &self,
+        cmd: Command,
+        core: &Core,
+        context: &Context,
+        registry: &RegistryRc,
+        event_tx: &Sender<PipewireEvent>,
+    ) {
         match cmd {
             Command::CoreSync => {
                 let _ = core.sync(0);
@@ -47,6 +56,10 @@ impl LoopState {
                 },
                 Err(e) => {
                     error!("Failed to create null sink: {e:?}");
+                    let _ = event_tx.blocking_send(PipewireEvent::ChannelCreationFailed {
+                        name,
+                        reason: e.to_string(),
+                    });
                 },
             },
             Command::DeleteChannel { channel } => {
@@ -85,12 +98,26 @@ impl LoopState {
                     debug!("target.object cleared for {}", node_id);
                 }
             },
+            Command::CreateMix { name } => match factory::create_loopback(context, &name) {
+                Ok(module) => {
+                    self.active_modules.borrow_mut().insert(name, module);
+                },
+                Err(e) => {
+                    error!("Failed to create loopback: {e:?}");
+                    let _ = event_tx.blocking_send(PipewireEvent::MixCreationFailed {
+                        name,
+                        reason: e.to_string(),
+                    });
+                },
+            },
+            Command::DeleteMix { mix } => {
+                let module = self.active_modules.borrow_mut().remove(&mix.name);
+                drop(module);
+            },
             Command::CreateLink { .. }
             | Command::DestroyLink { .. }
             | Command::SetMixRoute { .. }
-            | Command::CreateMix { .. }
-            | Command::LoadInput { .. }
-            | Command::DeleteMix { .. } => {},
+            | Command::LoadInput { .. } => {},
         }
     }
 

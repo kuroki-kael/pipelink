@@ -82,15 +82,18 @@ impl PipewireService {
         let _loop_clone = main_loop.clone();
         let event_tx_actions = event_tx.clone();
         let event_tx_remove = event_tx.clone();
+        let event_tx_commands = event_tx.clone();
 
         // Bind Pipewire channel to loop
         let _commands = cmd_rx.attach(main_loop.loop_(), move |cmd| {
-            state_cmd.handle_pipewire_command(cmd, &core, &reg_cmd);
+            state_cmd.handle_pipewire_command(cmd, &core, &context, &reg_cmd, &event_tx_commands);
         });
 
         let _registry_listener = registry
             .add_listener_local()
-            .global(move |obj| state_reg.handle_pipewire_event(obj, &event_tx_actions, &reg_global))
+            .global(move |obj| {
+                state_reg.handle_pipewire_event(obj, &event_tx_actions, &reg_global);
+            })
             .global_remove(move |id| {
                 state_remove.global_removed(GlobalId::from(id), &event_tx_remove);
             })
