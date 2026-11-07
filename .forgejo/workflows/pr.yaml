@@ -1,9 +1,14 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - dev
+      - feature/**
   pull_request:
     branches:
       - main
+      - dev
 
 jobs:
   check-and-build:
@@ -28,8 +33,19 @@ jobs:
             clang \
             libclang-dev
 
+      # The project formats with nightly rustfmt, because its configuration
+      # uses options that stable rustfmt ignores.
+      - name: Install nightly rustfmt
+        run: rustup toolchain install nightly --profile minimal --component rustfmt
+
       - name: Run cargo check
         run: cargo check --workspace --all-targets
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace --all-targets -- --deny warnings
+
+      - name: Run cargo fmt
+        run: cargo +nightly fmt --all --check
 
       - name: Run cargo build
         run: cargo build --workspace --all-targets --release
