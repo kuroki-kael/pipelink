@@ -8,16 +8,16 @@ use std::fmt;
 use pipelink_common::{
     error::ExecutorError,
     events::{ControlEvent, StateChangeEvent},
-    graph::{app_node::AppNode, channel::Channel, node::Node},
-    types::{NodeId, NodeName},
 };
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
-use pipelink_resolver::{is_process_alive, service::ProcessResolver};
+use pipelink_resolver::service::ProcessResolver;
 use pipewire::channel::Sender as ChannelSender;
 use tokio::sync::{broadcast::Sender as Broadcast, mpsc::Receiver};
-use tracing::{info, warn};
 
 use crate::{AudioGraph, config::topology::ConfigGraph};
+
+mod control_events;
+mod pipewire_events;
 
 /// Execution coordinator for the audio graph
 pub struct Executor {
@@ -100,36 +100,8 @@ impl Executor {
 
     fn handle_control_event(&mut self, ctrl: ControlEvent) -> Result<(), ExecutorError> {
         match ctrl {
-            ControlEvent::CreateChannel { name } => {
-                if self.graph.channels.iter().any(|c| c.name == name) {
-                    warn!("Channel {} already exists", name);
-                    return Ok(());
-                }
-
-                let channel = Channel::new(name.clone());
-                self.graph.channels.push(channel);
-
-                self.pw_tx
-                    .send(PipewireCommand::CreateChannel { name: name.clone() })
-                    .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-                let _ = self
-                    .state_tx
-                    .send(StateChangeEvent::ChannelAdded { channel: name });
-            },
-            ControlEvent::RemoveChannel { name } => {
-                if let Some(pos) = self.graph.channels.iter().position(|c| c.name == name) {
-                    let channel = self.graph.channels.remove(pos);
-
-                    self.pw_tx
-                        .send(PipewireCommand::DeleteChannel { channel })
-                        .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-                    let _ = self
-                        .state_tx
-                        .send(StateChangeEvent::ChannelRemoved { channel: name });
-                }
-            },
+            ControlEvent::CreateChannel { name } => self.on_create_channel(name)?,
+            ControlEvent::RemoveChannel { name } => self.on_remove_channel(name)?,
             ControlEvent::SetChannelGain { .. }
             | ControlEvent::SetChannelMute { .. }
             | ControlEvent::CreateMix { .. }
@@ -148,18 +120,7 @@ impl Executor {
             PipewireEvent::NodeAppeared {
                 id, name, serial, ..
             } => {
-                if let Some(channel_name) = name.strip_prefix("pipelink.channel.")
-                    && let Some(ch) = self
-                        .graph
-                        .channels
-                        .iter_mut()
-                        .find(|c| c.name == channel_name)
-                {
-                    ch.node.name = name;
-                    ch.node.id = Some(id);
-                    ch.node.serial = serial;
-                    info!("Channel '{}' has the id {id}", ch.name);
-                }
+                self.on_node_appeared(id, &name, serial);
             },
             PipewireEvent::PortAppeared {
                 id,
@@ -167,72 +128,15 @@ impl Executor {
                 direction,
                 channel,
             } => {
-                if let Some(ch) = self
-                    .graph
-                    .channels
-                    .iter_mut()
-                    .find(|c| c.node.id == Some(node_id))
-                    && ch.node.on_port_appeared(id, node_id, direction, channel)
-                    && ch.is_ready()
-                {
-                    info!("Channel '{}' is ready", ch.name);
-                }
+                self.on_port_appeared(id, node_id, direction, channel);
             },
             PipewireEvent::NodeInfo {
                 id, node_name, pid, ..
             } => {
-                // Ignore internal PipeLink nodes (e.g. pipelink.channel.* or
-                // pipelink.mix.*)
-                if let Some(ref name) = node_name
-                    && name.starts_with("pipelink.")
-                {
-                    return;
-                }
-                if self.graph.channels.iter().any(|c| c.node.id == Some(id)) {
-                    return;
-                }
-
-                if let Some(pid) = pid
-                    && let Some(app) = self.resolver.resolve(pid)
-                {
-                    info!(
-                        "Resolved stream node {id} to app '{}' ({})",
-                        app.display_name, app.app_name
-                    );
-
-                    let name = node_name.unwrap_or_else(|| NodeName::from(app.app_name.as_str()));
-
-                    let node = Node {
-                        id: Some(id),
-                        name,
-                        ..Default::default()
-                    };
-
-                    if let Some(existing) =
-                        self.graph.apps.iter_mut().find(|a| a.node.id == Some(id))
-                    {
-                        existing.app = app;
-                        existing.node = node;
-                    } else {
-                        self.graph.apps.push(AppNode::new(app, node));
-                    }
-                }
+                self.on_node_info(id, node_name, pid);
             },
             PipewireEvent::GlobalRemoved { id } => {
-                if let Some(pos) = self
-                    .graph
-                    .apps
-                    .iter()
-                    .position(|a| a.node.id == Some(NodeId::from(id)))
-                {
-                    let removed = self.graph.apps.remove(pos);
-                    let pid = removed.app.pid;
-                    let other_active = self.graph.apps.iter().any(|a| a.app.pid == pid);
-                    if !other_active && !is_process_alive(pid) {
-                        self.resolver.invalidate(pid);
-                        info!("Process {pid} exited, evicted from resolver cache");
-                    }
-                }
+                self.on_global_removed(id);
             },
             _ => {},
         }
