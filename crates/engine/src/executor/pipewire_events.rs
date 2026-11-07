@@ -6,16 +6,20 @@
 //! Handling of the events the `PipeWire` background loop reports back.
 
 use pipelink_common::{
+    events::StateChangeEvent,
     graph::{app_node::AppNode, node::Node},
-    types::{ChannelPosition, GlobalId, NodeId, NodeName, NodeSerial, Pid, PortDirection, PortId},
+    types::{
+        ChannelName, ChannelPosition, GlobalId, MixName, NodeId, NodeName, NodeSerial, Pid,
+        PortDirection, PortId,
+    },
 };
 use pipelink_resolver::is_process_alive;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::executor::Executor;
 
 impl Executor {
-    /// Registers a newly appeared node on the channel it belongs to.
+    /// Registers a newly appeared node on the channel or mix it belongs to.
     pub(super) fn on_node_appeared(
         &mut self,
         id: NodeId,
@@ -23,6 +27,7 @@ impl Executor {
         serial: Option<NodeSerial>,
     ) {
         let channel_name = name.strip_prefix("pipelink.channel.");
+        let mix_part = name.strip_prefix("pipelink.mix.");
 
         if let Some(channel_name) = channel_name
             && let Some(ch) = self
@@ -36,9 +41,32 @@ impl Executor {
             ch.node.serial = serial;
             info!("Channel '{}' has the id {id}", ch.name);
         }
+
+        if let Some(mix_part) = mix_part {
+            let (mix_name, is_source) = match mix_part.strip_suffix(".source") {
+                Some(base) => (base, true),
+                None => (mix_part, false),
+            };
+
+            if let Some(m) = self.graph.mixes.iter_mut().find(|m| m.name == mix_name) {
+                let node = if is_source {
+                    &mut m.source
+                } else {
+                    &mut m.sink
+                };
+                node.name = name.clone();
+                node.id = Some(id);
+                node.serial = serial;
+                info!(
+                    "Mix '{}' {} has the id {id}",
+                    m.name,
+                    if is_source { "source" } else { "sink" }
+                );
+            }
+        }
     }
 
-    /// Registers a newly appeared port on the channel it belongs to.
+    /// Registers a newly appeared port on the channel or mix it belongs to.
     pub(super) fn on_port_appeared(
         &mut self,
         id: PortId,
@@ -55,6 +83,26 @@ impl Executor {
             && ch.is_ready()
         {
             info!("Channel '{}' is ready", ch.name);
+        }
+
+        if let Some(m) = self
+            .graph
+            .mixes
+            .iter_mut()
+            .find(|m| m.sink.id == Some(node_id))
+            && m.sink.on_port_appeared(id, node_id, direction, position)
+            && m.is_ready()
+        {
+            info!("Mix '{}' is ready", m.name);
+        } else if let Some(m) = self
+            .graph
+            .mixes
+            .iter_mut()
+            .find(|m| m.source.id == Some(node_id))
+            && m.source.on_port_appeared(id, node_id, direction, position)
+            && m.is_ready()
+        {
+            info!("Mix '{}' is ready", m.name);
         }
     }
 
@@ -105,6 +153,11 @@ impl Executor {
     pub(super) fn on_global_removed(&mut self, id: GlobalId) {
         let id = NodeId::from(id);
 
+        self.graph
+            .mixes
+            .retain(|m| m.source.id != Some(id) && m.sink.id != Some(id));
+        self.graph.channels.retain(|c| c.node.id != Some(id));
+
         if let Some(pos) = self.graph.apps.iter().position(|a| a.node.id == Some(id)) {
             let removed = self.graph.apps.remove(pos);
             let pid = removed.app.pid;
@@ -114,5 +167,33 @@ impl Executor {
                 info!("Process {pid} exited, evicted from resolver cache");
             }
         }
+    }
+
+    /// Drops a channel that `PipeWire` refused to create.
+    ///
+    /// The channel was added to the graph optimistically, so it has to be
+    /// taken out again once the creation fails.
+    pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
+        self.graph.channels.retain(|c| c.name != name);
+
+        warn!("Channel '{name}' could not be created: {reason}");
+
+        let _ = self
+            .state_tx
+            .send(StateChangeEvent::ChannelRemoved { channel: name });
+    }
+
+    /// Drops a mix that `PipeWire` refused to create.
+    ///
+    /// The mix was added to the graph optimistically, so it has to be taken
+    /// out again once the creation fails.
+    pub(super) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
+        self.graph.mixes.retain(|m| m.name != name);
+
+        warn!("Mix '{name}' could not be created: {reason}");
+
+        let _ = self
+            .state_tx
+            .send(StateChangeEvent::MixRemoved { mix: name });
     }
 }

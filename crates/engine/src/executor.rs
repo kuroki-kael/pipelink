@@ -102,10 +102,10 @@ impl Executor {
         match ctrl {
             ControlEvent::CreateChannel { name } => self.on_create_channel(name)?,
             ControlEvent::RemoveChannel { name } => self.on_remove_channel(name)?,
+            ControlEvent::CreateMix { name } => self.on_create_mix(name)?,
+            ControlEvent::RemoveMix { name } => self.on_remove_mix(name)?,
             ControlEvent::SetChannelGain { .. }
             | ControlEvent::SetChannelMute { .. }
-            | ControlEvent::CreateMix { .. }
-            | ControlEvent::RemoveMix { .. }
             | ControlEvent::SelectGlobalActiveLayer { .. }
             | ControlEvent::SelectChannelActiveLayer { .. }
             | ControlEvent::AddChannelMix { .. }
@@ -137,6 +137,12 @@ impl Executor {
             },
             PipewireEvent::GlobalRemoved { id } => {
                 self.on_global_removed(id);
+            },
+            PipewireEvent::ChannelCreationFailed { name, reason } => {
+                self.on_channel_creation_failed(name, &reason);
+            },
+            PipewireEvent::MixCreationFailed { name, reason } => {
+                self.on_mix_creation_failed(name, &reason);
             },
             _ => {},
         }
