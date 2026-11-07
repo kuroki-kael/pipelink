@@ -1,5 +1,5 @@
 [package]
-name = "pipelink-bin"
+name = "pipelink"
 version.workspace = true
 keywords.workspace = true
 edition.workspace = true
