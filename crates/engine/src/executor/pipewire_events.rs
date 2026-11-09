@@ -204,6 +204,35 @@ impl Executor {
         }
     }
 
+    /// Reports a node that could not be destroyed.
+    ///
+    /// The entry stays in the graph, because the node is still there. The
+    /// client learns that the removal did not happen.
+    pub(super) fn on_global_removal_failed(&mut self, id: GlobalId, reason: &str) {
+        let id = NodeId::from(id);
+
+        if let Some(channel) = self.graph.channels.iter().find(|c| c.node.id == Some(id)) {
+            warn!("Channel '{}' could not be removed: {reason}", channel.name);
+            let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
+                channel: channel.name.clone(),
+                error: reason.to_string(),
+            });
+        }
+
+        if let Some(mix) = self
+            .graph
+            .mixes
+            .iter()
+            .find(|m| m.source.id == Some(id) || m.sink.id == Some(id))
+        {
+            warn!("Mix '{}' could not be removed: {reason}", mix.name);
+            let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+                mix: mix.name.clone(),
+                error: reason.to_string(),
+            });
+        }
+    }
+
     /// Drops a channel that `PipeWire` refused to create.
     ///
     /// The channel was added to the graph optimistically, so it has to be
@@ -215,6 +244,16 @@ impl Executor {
 
         let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
             channel: name,
+            error: reason.to_string(),
+        });
+    }
+
+    /// Reports a mix whose loopback could not be removed.
+    pub(super) fn on_mix_removal_failed(&mut self, name: MixName, reason: &str) {
+        warn!("Mix '{name}' could not be removed: {reason}");
+
+        let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+            mix: name,
             error: reason.to_string(),
         });
     }

@@ -142,11 +142,17 @@ impl Executor {
             PipewireEvent::GlobalRemoved { id } => {
                 self.on_global_removed(id);
             },
+            PipewireEvent::GlobalRemovalFailed { id, reason } => {
+                self.on_global_removal_failed(id, &reason);
+            },
             PipewireEvent::ChannelCreationFailed { name, reason } => {
                 self.on_channel_creation_failed(name, &reason);
             },
             PipewireEvent::MixCreationFailed { name, reason } => {
                 self.on_mix_creation_failed(name, &reason);
+            },
+            PipewireEvent::MixRemovalFailed { name, reason } => {
+                self.on_mix_removal_failed(name, &reason);
             },
             _ => {},
         }
