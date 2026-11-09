@@ -40,22 +40,30 @@ impl Executor {
     /// Removes a channel and destroys the `PipeWire` sink backing it.
     ///
     /// The entry stays in the graph until `PipeWire` reports the node gone,
-    /// because only that report confirms the removal.
+    /// because only that report confirms the removal. A channel that does
+    /// not exist is reported as a failed removal, otherwise the client would
+    /// wait for an event that never arrives.
     pub(super) fn on_remove_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
-        if let Some(channel) = self.graph.channels.iter().find(|c| c.name == name).cloned() {
-            if channel.node.id.is_none() {
-                // The sink was never created, so there is nothing to destroy.
-                self.graph.channels.retain(|c| c.name != name);
-                let _ = self
-                    .state_tx
-                    .send(StateEvent::ChannelRemoved { channel: name });
-                return Ok(());
-            }
+        let Some(channel) = self.graph.channels.iter().find(|c| c.name == name).cloned() else {
+            let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
+                channel: name,
+                error: "there is no channel with this name".to_string(),
+            });
+            return Ok(());
+        };
 
-            self.pw_tx
-                .send(PipewireCommand::DeleteChannel { channel })
-                .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
+        if channel.node.id.is_none() {
+            // The sink was never created, so there is nothing to destroy.
+            self.graph.channels.retain(|c| c.name != name);
+            let _ = self
+                .state_tx
+                .send(StateEvent::ChannelRemoved { channel: name });
+            return Ok(());
         }
+
+        self.pw_tx
+            .send(PipewireCommand::DeleteChannel { channel })
+            .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
 
         Ok(())
     }
@@ -80,20 +88,28 @@ impl Executor {
     /// Removes a mix and destroys the `PipeWire` loopback backing it.
     ///
     /// The entry stays in the graph until `PipeWire` reports the nodes gone,
-    /// because only that report confirms the removal.
+    /// because only that report confirms the removal. A mix that does not
+    /// exist is reported as a failed removal, otherwise the client would
+    /// wait for an event that never arrives.
     pub(super) fn on_remove_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
-        if let Some(mix) = self.graph.mixes.iter().find(|m| m.name == name).cloned() {
-            if mix.sink.id.is_none() && mix.source.id.is_none() {
-                // The loopback was never created, so there is nothing to destroy.
-                self.graph.mixes.retain(|m| m.name != name);
-                let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
-                return Ok(());
-            }
+        let Some(mix) = self.graph.mixes.iter().find(|m| m.name == name).cloned() else {
+            let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+                mix: name,
+                error: "there is no mix with this name".to_string(),
+            });
+            return Ok(());
+        };
 
-            self.pw_tx
-                .send(PipewireCommand::DeleteMix { mix })
-                .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
+        if mix.sink.id.is_none() && mix.source.id.is_none() {
+            // The loopback was never created, so there is nothing to destroy.
+            self.graph.mixes.retain(|m| m.name != name);
+            let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
+            return Ok(());
         }
+
+        self.pw_tx
+            .send(PipewireCommand::DeleteMix { mix })
+            .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
 
         Ok(())
     }

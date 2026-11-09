@@ -92,4 +92,18 @@ pub enum StateEvent {
         /// Reason the `PipeWire` loopback could not be created.
         error: String,
     },
+    /// Channel couldn't be removed.
+    ChannelRemovalFailed {
+        /// Channel name.
+        channel: ChannelName,
+        /// Reason the channel could not be removed.
+        error: String,
+    },
+    /// Mix couldn't be removed.
+    MixRemovalFailed {
+        /// Mix name.
+        mix: MixName,
+        /// Reason the mix could not be removed.
+        error: String,
+    },
 }
