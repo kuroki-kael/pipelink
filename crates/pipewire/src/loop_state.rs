@@ -64,12 +64,17 @@ impl LoopState {
             },
             Command::DeleteChannel { channel } => {
                 if let Some(id) = channel.node.id {
-                    let _ = registry.destroy_global(id.0);
-                    self.active_nodes.borrow_mut().remove(&channel.name);
+                    self.destroy_channel(&channel.name, id, registry, event_tx);
                 }
             },
             Command::DestroyNode { node_id } => {
-                let _ = registry.destroy_global(node_id.0);
+                if let Err(e) = registry.destroy_global(node_id.0).into_result() {
+                    error!("Failed to destroy node {}: {e}", node_id.0);
+                    let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+                        id: GlobalId::from(node_id.0),
+                        reason: e.to_string(),
+                    });
+                }
             },
             Command::SetAppRoute { app, channel } => {
                 // set target.object to target channel serial on the stream node
@@ -112,12 +117,60 @@ impl LoopState {
             },
             Command::DeleteMix { mix } => {
                 let module = self.active_modules.borrow_mut().remove(&mix.name);
-                drop(module);
+                if let Some(module) = module {
+                    drop(module);
+                } else {
+                    // Without the loopback there is nothing that could vanish,
+                    // so the removal would never be confirmed.
+                    error!("No loopback to destroy for mix '{}'", mix.name);
+                    let _ = event_tx.blocking_send(PipewireEvent::MixRemovalFailed {
+                        name: mix.name,
+                        reason: "the loopback of the mix does not exist".to_string(),
+                    });
+                }
             },
             Command::CreateLink { .. }
             | Command::DestroyLink { .. }
             | Command::SetMixRoute { .. }
             | Command::LoadInput { .. } => {},
+        }
+    }
+
+    /// Destroys the sink of a channel and reports why that did not work.
+    ///
+    /// The removal is only confirmed when `PipeWire` reports the node as
+    /// gone. If there is nothing to destroy, or if the destruction fails,
+    /// the removal is reported as failed, so that nobody waits for a
+    /// confirmation that cannot arrive.
+    fn destroy_channel(
+        &self,
+        name: &ChannelName,
+        id: NodeId,
+        registry: &RegistryRc,
+        event_tx: &Sender<PipewireEvent>,
+    ) {
+        let is_active = self.active_nodes.borrow().contains_key(name);
+
+        if is_active {
+            match registry.destroy_global(id.0).into_result() {
+                Ok(_) => {
+                    self.active_nodes.borrow_mut().remove(name);
+                },
+                Err(e) => {
+                    error!("Failed to destroy the sink of channel '{name}': {e}");
+                    let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+                        id: GlobalId::from(id.0),
+                        reason: e.to_string(),
+                    });
+                },
+            }
+        } else {
+            // The sink is not there, so nothing can vanish.
+            error!("No sink to destroy for channel '{name}'");
+            let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+                id: GlobalId::from(id.0),
+                reason: "the sink of the channel does not exist".to_string(),
+            });
         }
     }
 

@@ -100,6 +100,14 @@ pub enum PipewireEvent {
         id: GlobalId,
     },
 
+    /// A node could not be destroyed.
+    GlobalRemovalFailed {
+        /// The node that could not be destroyed.
+        id: GlobalId,
+        /// Human readable reason of the failure.
+        reason: String,
+    },
+
     /// The sink backing a channel could not be created.
     ChannelCreationFailed {
         /// Name of the channel that could not be created.
@@ -111,6 +119,14 @@ pub enum PipewireEvent {
     /// The loopback backing a mix could not be created.
     MixCreationFailed {
         /// Name of the mix that could not be created.
+        name: MixName,
+        /// Human readable reason of the failure.
+        reason: String,
+    },
+
+    /// The loopback backing a mix could not be removed.
+    MixRemovalFailed {
+        /// Name of the mix that could not be removed.
         name: MixName,
         /// Human readable reason of the failure.
         reason: String,
