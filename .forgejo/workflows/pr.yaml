@@ -33,6 +33,11 @@ jobs:
             clang \
             libclang-dev
 
+      # The rust image of the runner does not ship clippy for the toolchain
+      # it pins, and without it the lint step cannot run at all.
+      - name: Install clippy
+        run: rustup component add clippy
+
       # The project formats with nightly rustfmt, because its configuration
       # uses options that stable rustfmt ignores.
       - name: Install nightly rustfmt
