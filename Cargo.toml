@@ -34,7 +34,7 @@ pipelink-resolver = { path = "crates/resolver" }
 pipelink-common = { path = "crates/common" }
 
 # Audio
-jack = { version = "0.13.5" }
+jack = { version = "0.14.0" }
 pipewire = { version = "0.10.1" }
 pipewire-sys = { version = "0.10.1" }
 
