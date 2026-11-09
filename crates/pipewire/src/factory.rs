@@ -58,7 +58,7 @@ pub(crate) fn create_loopback(
                 playback.props = {{
                     media.class = "Audio/Source"
                     node.name = "pipelink.mix.{name}.source"
-                    node.description = "{name} Mix (Virtual Mic)"
+                    node.description = "{name} Mix"
                     node.autoconnect = false
                     audio.rate = 48000
                     audio.format = "F32LE"
