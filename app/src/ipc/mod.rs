@@ -5,10 +5,12 @@
 
 //! Transport between the cli and the daemon over a unix socket.
 
+mod client;
 mod server;
 
 use std::{env, fs, io, os::unix::fs::MetadataExt, path::PathBuf};
 
+pub(crate) use client::{send_mutation, send_query};
 pub(crate) use server::{handle_client, start_server};
 
 /// Path of the control socket, used by the daemon and the cli alike.
