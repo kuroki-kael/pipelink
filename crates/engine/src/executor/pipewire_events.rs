@@ -83,6 +83,11 @@ impl Executor {
             && ch.is_ready()
         {
             info!("Channel '{}' is ready", ch.name);
+            // The graph entry is optimistic, the ChannelAdded event is sent once
+            // PipeWire has registered all ports of the sink.
+            let _ = self.state_tx.send(StateEvent::ChannelAdded {
+                channel: ch.name.clone(),
+            });
         }
 
         if let Some(m) = self
@@ -94,6 +99,11 @@ impl Executor {
             && m.is_ready()
         {
             info!("Mix '{}' is ready", m.name);
+            // The graph entry is optimistic, the ChannelAdded event is sent once
+            // PipeWire has registered all ports of the sink.
+            let _ = self.state_tx.send(StateEvent::MixAdded {
+                mix: m.name.clone(),
+            });
         } else if let Some(m) = self
             .graph
             .mixes
@@ -103,6 +113,11 @@ impl Executor {
             && m.is_ready()
         {
             info!("Mix '{}' is ready", m.name);
+            // The graph entry is optimistic, the ChannelAdded event is sent once
+            // PipeWire has registered all ports of the sink.
+            let _ = self.state_tx.send(StateEvent::MixAdded {
+                mix: m.name.clone(),
+            });
         }
     }
 
@@ -150,13 +165,33 @@ impl Executor {
     }
 
     /// Drops the nodes that vanished from the `PipeWire` registry.
+    ///
+    /// The entry is taken out of the graph here and not when the removal was
+    /// requested, because only the vanished node confirms the removal.
     pub(super) fn on_global_removed(&mut self, id: GlobalId) {
         let id = NodeId::from(id);
 
-        self.graph
+        let channel = self
+            .graph
+            .channels
+            .iter()
+            .position(|c| c.node.id == Some(id))
+            .map(|pos| self.graph.channels.remove(pos));
+        let mix = self
+            .graph
             .mixes
-            .retain(|m| m.source.id != Some(id) && m.sink.id != Some(id));
-        self.graph.channels.retain(|c| c.node.id != Some(id));
+            .iter()
+            .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
+            .map(|pos| self.graph.mixes.remove(pos));
+
+        if let Some(channel) = channel {
+            let _ = self.state_tx.send(StateEvent::ChannelRemoved {
+                channel: channel.name,
+            });
+        }
+        if let Some(mix) = mix {
+            let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
+        }
 
         if let Some(pos) = self.graph.apps.iter().position(|a| a.node.id == Some(id)) {
             let removed = self.graph.apps.remove(pos);
@@ -178,9 +213,10 @@ impl Executor {
 
         warn!("Channel '{name}' could not be created: {reason}");
 
-        let _ = self
-            .state_tx
-            .send(StateEvent::ChannelRemoved { channel: name });
+        let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
+            channel: name,
+            error: reason.to_string(),
+        });
     }
 
     /// Drops a mix that `PipeWire` refused to create.
@@ -192,6 +228,9 @@ impl Executor {
 
         warn!("Mix '{name}' could not be created: {reason}");
 
-        let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
+        let _ = self.state_tx.send(StateEvent::MixCreationFailed {
+            mix: name,
+            error: reason.to_string(),
+        });
     }
 }

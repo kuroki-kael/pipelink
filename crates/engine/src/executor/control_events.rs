@@ -21,9 +21,6 @@ impl Executor {
     ///
     /// The channel enters the graph optimistically, before `PipeWire` confirms
     /// it, and is taken out again on `ChannelCreationFailed`.
-    // TODO: Add the channel to the graph only once `NodeAppeared` confirms it.
-    //   That needs a pending set for the duplicate check and a delete path that
-    //   resolves by name, so a request can be withdrawn before it materialises.
     pub(super) fn on_create_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
         if self.graph.channels.iter().any(|c| c.name == name) {
             warn!("Channel {} already exists", name);
@@ -34,28 +31,30 @@ impl Executor {
         self.graph.channels.push(channel);
 
         self.pw_tx
-            .send(PipewireCommand::CreateChannel { name: name.clone() })
-            .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-        let _ = self
-            .state_tx
-            .send(StateEvent::ChannelAdded { channel: name });
+            .send(PipewireCommand::CreateChannel { name })
+            .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
 
         Ok(())
     }
 
     /// Removes a channel and destroys the `PipeWire` sink backing it.
+    ///
+    /// The entry stays in the graph until `PipeWire` reports the node gone,
+    /// because only that report confirms the removal.
     pub(super) fn on_remove_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
-        if let Some(pos) = self.graph.channels.iter().position(|c| c.name == name) {
-            let channel = self.graph.channels.remove(pos);
+        if let Some(channel) = self.graph.channels.iter().find(|c| c.name == name).cloned() {
+            if channel.node.id.is_none() {
+                // The sink was never created, so there is nothing to destroy.
+                self.graph.channels.retain(|c| c.name != name);
+                let _ = self
+                    .state_tx
+                    .send(StateEvent::ChannelRemoved { channel: name });
+                return Ok(());
+            }
 
             self.pw_tx
                 .send(PipewireCommand::DeleteChannel { channel })
-                .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-            let _ = self
-                .state_tx
-                .send(StateEvent::ChannelRemoved { channel: name });
+                .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
         }
 
         Ok(())
@@ -72,24 +71,28 @@ impl Executor {
         self.graph.mixes.push(mix);
 
         self.pw_tx
-            .send(PipewireCommand::CreateMix { name: name.clone() })
-            .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-        let _ = self.state_tx.send(StateEvent::MixAdded { mix: name });
+            .send(PipewireCommand::CreateMix { name })
+            .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
 
         Ok(())
     }
 
     /// Removes a mix and destroys the `PipeWire` loopback backing it.
+    ///
+    /// The entry stays in the graph until `PipeWire` reports the nodes gone,
+    /// because only that report confirms the removal.
     pub(super) fn on_remove_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
-        if let Some(pos) = self.graph.mixes.iter().position(|m| m.name == name) {
-            let mix = self.graph.mixes.remove(pos);
+        if let Some(mix) = self.graph.mixes.iter().find(|m| m.name == name).cloned() {
+            if mix.sink.id.is_none() && mix.source.id.is_none() {
+                // The loopback was never created, so there is nothing to destroy.
+                self.graph.mixes.retain(|m| m.name != name);
+                let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
+                return Ok(());
+            }
 
             self.pw_tx
                 .send(PipewireCommand::DeleteMix { mix })
-                .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
-
-            let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
+                .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
         }
 
         Ok(())

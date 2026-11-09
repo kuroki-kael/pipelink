@@ -78,4 +78,18 @@ pub enum StateEvent {
         /// Mix name.
         mix: MixName,
     },
+    /// Channel couldn't be created.
+    ChannelCreationFailed {
+        /// Channel name.
+        channel: ChannelName,
+        /// Reason the `PipeWire` sink could not be created.
+        error: String,
+    },
+    /// Mix couldn't be created.
+    MixCreationFailed {
+        /// Mix name.
+        mix: MixName,
+        /// Reason the `PipeWire` loopback could not be created.
+        error: String,
+    },
 }

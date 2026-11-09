@@ -12,9 +12,6 @@ pub enum ExecutorError {
     #[error("Pipewire error: {0}")]
     Pipewire(String),
 
-    #[error("Pipewire channel error: {0}")]
-    PipewireChannel(String),
-
     #[error("JACK error: {0}")]
     Jack(String),
 
