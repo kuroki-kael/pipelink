@@ -59,6 +59,9 @@ pub(super) async fn run(action: MixAction) {
             };
             match crate::ipc::send_mutation(request, |event| confirms_removed(event, &target)).await
             {
+                Ok(StateEvent::MixRemovalFailed { error, .. }) => {
+                    fail(format!("failed to remove mix '{name}': {error}"));
+                },
                 Ok(_) => println!("Mix '{name}' removed"),
                 Err(e) => fail(e),
             }
@@ -81,5 +84,8 @@ fn confirms_created(event: &StateEvent, target: &MixName) -> bool {
 
 /// Whether the state event confirms that the mix was removed.
 fn confirms_removed(event: &StateEvent, target: &MixName) -> bool {
-    matches!(event, StateEvent::MixRemoved { mix } if mix == target)
+    matches!(
+        event,
+        StateEvent::MixRemoved { mix } | StateEvent::MixRemovalFailed { mix, .. } if mix == target
+    )
 }

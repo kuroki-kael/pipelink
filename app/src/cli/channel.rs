@@ -57,6 +57,9 @@ pub(super) async fn run(action: ChannelAction) {
             };
             match crate::ipc::send_mutation(request, |event| confirms_removed(event, &target)).await
             {
+                Ok(StateEvent::ChannelRemovalFailed { error, .. }) => {
+                    fail(format!("failed to remove channel '{name}': {error}"));
+                },
                 Ok(_) => println!("Channel '{name}' removed"),
                 Err(e) => fail(e),
             }
@@ -75,5 +78,9 @@ fn confirms_created(event: &StateEvent, target: &ChannelName) -> bool {
 
 /// Whether the state event confirms that the channel was removed.
 fn confirms_removed(event: &StateEvent, target: &ChannelName) -> bool {
-    matches!(event, StateEvent::ChannelRemoved { channel } if channel == target)
+    matches!(
+        event,
+        StateEvent::ChannelRemoved { channel } | StateEvent::ChannelRemovalFailed { channel, .. }
+            if channel == target
+    )
 }
