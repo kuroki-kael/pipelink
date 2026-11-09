@@ -10,6 +10,7 @@ use crate::types::{AppDisplay, ChannelName, MixName};
 /// Answer to a control event that asks for state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ControlReply {
     /// The names of all channels.
     Channels { names: Vec<ChannelName> },

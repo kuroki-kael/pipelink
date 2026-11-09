@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::{ChannelName, MixName};
 
-/// Events sent from controllers (IPC, CLI, GUI, MIDI, Web) to request state changes.
+/// Events sent from controllers (IPC, CLI, GUI, MIDI, Web) to request state changes and
+/// queries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ControlEvent {
     /// Sets channel gain for a specific mix.
     SetChannelGain {
@@ -75,4 +77,14 @@ pub enum ControlEvent {
         /// Target mix name.
         mix: MixName,
     },
+    /// Requests the names of all channels.
+    ListChannels,
+    /// Requests the names of all mixes.
+    ListMixes,
+    /// Requests the apps and the channel each one is routed to.
+    ListAppChannels,
+    /// Requests the mixes and the channels routed to each.
+    ListMixChannels,
+    /// Requests the globally active mix.
+    GetActiveMix,
 }

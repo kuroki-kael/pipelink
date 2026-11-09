@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 use pipelink_common::events::ControlEvent;
-use pipelink_engine::{ConfigGraph, executor::Executor};
+use pipelink_engine::{
+    ConfigGraph,
+    executor::{Envelope, Executor},
+};
 
 /// Runs the audio routing daemon until the executor stops.
 ///
@@ -25,8 +28,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         println!("🚀 Sende CreateChannel für 'test1'...");
         if let Err(e) = control_tx
-            .send(ControlEvent::CreateChannel {
-                name: "test1".into(),
+            .send(Envelope {
+                event: ControlEvent::CreateChannel {
+                    name: "test1".into(),
+                },
+                reply: None,
             })
             .await
         {
@@ -36,8 +42,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         println!("🚀 Sende CreateMix für 'test2'...");
         if let Err(e) = control_tx
-            .send(ControlEvent::CreateMix {
-                name: "test2".into(),
+            .send(Envelope {
+                event: ControlEvent::CreateMix {
+                    name: "test2".into(),
+                },
+                reply: None,
             })
             .await
         {
@@ -47,8 +56,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
         println!("🗑️ Sende RemoveChannel für 'test1'...");
         if let Err(e) = control_tx
-            .send(ControlEvent::RemoveChannel {
-                name: "test1".into(),
+            .send(Envelope {
+                event: ControlEvent::RemoveChannel {
+                    name: "test1".into(),
+                },
+                reply: None,
             })
             .await
         {
@@ -58,8 +70,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
         println!("🗑️ Sende RemoveMix für 'test2'...");
         if let Err(e) = control_tx
-            .send(ControlEvent::RemoveMix {
-                name: "test2".into(),
+            .send(Envelope {
+                event: ControlEvent::RemoveMix {
+                    name: "test2".into(),
+                },
+                reply: None,
             })
             .await
         {

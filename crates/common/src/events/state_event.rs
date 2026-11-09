@@ -10,6 +10,7 @@ use crate::types::{ChannelName, MixName};
 /// Events broadcast by the audio engine to notify listeners of state changes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum StateEvent {
     /// Gain changed for a channel within a mix.
     GainChanged {

@@ -62,6 +62,18 @@ fn test_events_round_trip() {
 }
 
 #[test]
+fn test_control_event_query_json_format() {
+    assert_eq!(
+        serde_json::to_string(&ControlEvent::ListChannels).unwrap(),
+        r#"{"type":"list_channels"}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&ControlEvent::GetActiveMix).unwrap(),
+        r#"{"type":"get_active_mix"}"#
+    );
+}
+
+#[test]
 fn test_control_reply_channels_json_format() {
     let reply = ControlReply::Channels {
         names: vec![ChannelName::from("mic"), ChannelName::from("line")],

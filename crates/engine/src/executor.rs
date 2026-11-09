@@ -7,23 +7,24 @@ use std::fmt;
 
 use pipelink_common::{
     error::ExecutorError,
-    events::{ControlEvent, StateEvent},
+    events::{ControlEvent, ControlReply, StateEvent},
 };
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
 use pipewire::channel::Sender as ChannelSender;
-use tokio::sync::{broadcast::Sender as Broadcast, mpsc::Receiver};
+use tokio::sync::{broadcast::Sender as Broadcast, mpsc::Receiver, oneshot::Sender};
 
 use crate::{AudioGraph, config::topology::ConfigGraph};
 
 mod control_events;
 mod pipewire_events;
+mod query_events;
 
 /// Execution coordinator for the audio graph
 pub struct Executor {
     config: ConfigGraph,
     graph: AudioGraph,
-    control_rx: Receiver<ControlEvent>,
+    control_rx: Receiver<Envelope>,
     state_tx: Broadcast<StateEvent>,
     pw_service: Option<PipewireService>,
     pw_tx: ChannelSender<PipewireCommand>,
@@ -51,7 +52,7 @@ impl Executor {
     /// Returns an [`ExecutorError`] if initializing the `PipeWire` service fails.
     pub fn new(
         config: ConfigGraph,
-        control_rx: Receiver<ControlEvent>,
+        control_rx: Receiver<Envelope>,
         state_tx: Broadcast<StateEvent>,
     ) -> Result<Self, ExecutorError> {
         // tokio mpsc for incoming pipewire events
@@ -81,8 +82,10 @@ impl Executor {
     pub async fn run(&mut self) -> Result<(), ExecutorError> {
         loop {
             tokio::select! {
-                Some(ctrl) = self.control_rx.recv() => {
-                    self.handle_control_event(ctrl)?;
+                Some(envelope) = self.control_rx.recv() => {
+                    if let Some(event) = self.handle_query(envelope) {
+                        self.handle_control_event(event)?;
+                    }
                 }
                 Some(event) = self.pw_rx.recv() => {
                     self.handle_pipewire_event(event);
@@ -109,7 +112,8 @@ impl Executor {
             | ControlEvent::SelectGlobalActiveLayer { .. }
             | ControlEvent::SelectChannelActiveLayer { .. }
             | ControlEvent::AddChannelMix { .. }
-            | ControlEvent::RemoveChannelMix { .. } => {},
+            | ControlEvent::RemoveChannelMix { .. }
+            | _ => {},
         }
 
         Ok(())
@@ -147,4 +151,20 @@ impl Executor {
             _ => {},
         }
     }
+
+    /// Sends the answer back to the client that asked for it.
+    fn reply(reply_tx: Option<Sender<ControlReply>>, msg: ControlReply) {
+        if let Some(reply_tx) = reply_tx {
+            let _ = reply_tx.send(msg);
+        }
+    }
+}
+
+/// A control event together with the channel its answer goes back through.
+#[derive(Debug)]
+pub struct Envelope {
+    /// The requested state change or query.
+    pub event: ControlEvent,
+    /// Where the answer goes, `None` if the event asks for no answer.
+    pub reply: Option<Sender<ControlReply>>,
 }
