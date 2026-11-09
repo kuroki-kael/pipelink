@@ -242,7 +242,8 @@ impl ProcessResolver {
     fn build_resolved(original_pid: Pid, proc: &ProcessInfo, unwrapped: UnwrappedApp) -> App {
         let display_name = unwrapped
             .display_name
-            .unwrap_or_else(|| capitalize(&unwrapped.app_name));
+            .unwrap_or_else(|| capitalize(&unwrapped.app_name))
+            .into();
 
         App {
             pid: original_pid,

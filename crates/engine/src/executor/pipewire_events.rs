@@ -6,7 +6,7 @@
 //! Handling of the events the `PipeWire` background loop reports back.
 
 use pipelink_common::{
-    events::StateChangeEvent,
+    events::StateEvent,
     graph::{app_node::AppNode, node::Node},
     types::{
         ChannelName, ChannelPosition, GlobalId, MixName, NodeId, NodeName, NodeSerial, Pid,
@@ -180,7 +180,7 @@ impl Executor {
 
         let _ = self
             .state_tx
-            .send(StateChangeEvent::ChannelRemoved { channel: name });
+            .send(StateEvent::ChannelRemoved { channel: name });
     }
 
     /// Drops a mix that `PipeWire` refused to create.
@@ -192,8 +192,6 @@ impl Executor {
 
         warn!("Mix '{name}' could not be created: {reason}");
 
-        let _ = self
-            .state_tx
-            .send(StateChangeEvent::MixRemoved { mix: name });
+        let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
     }
 }

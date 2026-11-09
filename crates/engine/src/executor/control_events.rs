@@ -7,7 +7,7 @@
 
 use pipelink_common::{
     error::ExecutorError,
-    events::StateChangeEvent,
+    events::StateEvent,
     graph::{channel::Channel, mix::Mix},
     types::{ChannelName, MixName},
 };
@@ -39,7 +39,7 @@ impl Executor {
 
         let _ = self
             .state_tx
-            .send(StateChangeEvent::ChannelAdded { channel: name });
+            .send(StateEvent::ChannelAdded { channel: name });
 
         Ok(())
     }
@@ -55,7 +55,7 @@ impl Executor {
 
             let _ = self
                 .state_tx
-                .send(StateChangeEvent::ChannelRemoved { channel: name });
+                .send(StateEvent::ChannelRemoved { channel: name });
         }
 
         Ok(())
@@ -75,7 +75,7 @@ impl Executor {
             .send(PipewireCommand::CreateMix { name: name.clone() })
             .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
 
-        let _ = self.state_tx.send(StateChangeEvent::MixAdded { mix: name });
+        let _ = self.state_tx.send(StateEvent::MixAdded { mix: name });
 
         Ok(())
     }
@@ -89,9 +89,7 @@ impl Executor {
                 .send(PipewireCommand::DeleteMix { mix })
                 .map_err(|e| ExecutorError::PipewireChannel(format!("{e:?}")))?;
 
-            let _ = self
-                .state_tx
-                .send(StateChangeEvent::MixRemoved { mix: name });
+            let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
         }
 
         Ok(())

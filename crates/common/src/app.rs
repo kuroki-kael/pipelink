@@ -9,7 +9,7 @@ use std::{fmt, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AppId, Pid};
+use crate::types::{AppDisplay, AppId, Pid};
 
 /// Classification of the wrapper or execution environment detected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -66,7 +66,7 @@ pub struct App {
     /// Short canonical application slug (e.g. "streamcontroller", "discord", "reaper").
     pub app_name: String,
     /// Human-friendly display name (e.g. "`StreamController`", "Discord", "REAPER").
-    pub display_name: String,
+    pub display_name: AppDisplay,
     /// Wrapper type detected (Flatpak, Wine, Proton, Electron, Snap, `AppImage`, Script,
     /// None).
     pub wrapper: WrapperKind,

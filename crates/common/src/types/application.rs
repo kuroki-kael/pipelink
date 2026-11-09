@@ -9,6 +9,79 @@ use std::{borrow::Borrow, fmt, num::ParseIntError, ops::Deref, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
+/// Display name of an application
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct AppDisplay(pub String);
+
+impl From<String> for AppDisplay {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for AppDisplay {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<AppDisplay> for String {
+    fn from(app_id: AppDisplay) -> Self {
+        app_id.0
+    }
+}
+
+impl fmt::Display for AppDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Deref for AppDisplay {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<str> for AppDisplay {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for AppDisplay {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<str> for AppDisplay {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for AppDisplay {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<AppDisplay> for &str {
+    fn eq(&self, other: &AppDisplay) -> bool {
+        *self == other.0
+    }
+}
+
+impl PartialEq<AppDisplay> for str {
+    fn eq(&self, other: &AppDisplay) -> bool {
+        *self == other.0
+    }
+}
+
 /// Desktop or Flatpak application identifier (e.g. "com.discordapp.Discord").
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(transparent)]

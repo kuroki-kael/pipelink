@@ -14,7 +14,7 @@ mod port;
 mod process;
 mod routing;
 
-pub use application::{AppId, SteamAppId};
+pub use application::{AppDisplay, AppId, SteamAppId};
 pub use global::GlobalId;
 pub use link::LinkId;
 pub use media::MediaClass;

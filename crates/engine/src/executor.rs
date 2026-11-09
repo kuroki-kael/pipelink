@@ -7,7 +7,7 @@ use std::fmt;
 
 use pipelink_common::{
     error::ExecutorError,
-    events::{ControlEvent, StateChangeEvent},
+    events::{ControlEvent, StateEvent},
 };
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
@@ -24,7 +24,7 @@ pub struct Executor {
     config: ConfigGraph,
     graph: AudioGraph,
     control_rx: Receiver<ControlEvent>,
-    state_tx: Broadcast<StateChangeEvent>,
+    state_tx: Broadcast<StateEvent>,
     pw_service: Option<PipewireService>,
     pw_tx: ChannelSender<PipewireCommand>,
     pw_rx: Receiver<PipewireEvent>,
@@ -52,7 +52,7 @@ impl Executor {
     pub fn new(
         config: ConfigGraph,
         control_rx: Receiver<ControlEvent>,
-        state_tx: Broadcast<StateChangeEvent>,
+        state_tx: Broadcast<StateEvent>,
     ) -> Result<Self, ExecutorError> {
         // tokio mpsc for incoming pipewire events
         let (pw_event_tx, pw_event_rx) = tokio::sync::mpsc::channel(128);
