@@ -2,11 +2,9 @@
  * Copyright (c) 2026 Kuroki-Kael / PipeLink Contributors.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-use pipelink_common::events::ControlEvent;
-use pipelink_engine::{
-    ConfigGraph,
-    executor::{Envelope, Executor},
-};
+use pipelink_engine::{ConfigGraph, executor::Executor};
+
+use crate::ipc::{handle_client, start_server};
 
 /// Runs the audio routing daemon until the executor stops.
 ///
@@ -19,73 +17,26 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starte Audio-Routing Daemon...");
 
     let (control_tx, control_rx) = tokio::sync::mpsc::channel(32);
-    let (state_tx, mut state_rx) = tokio::sync::broadcast::channel(32);
+    let (state_tx, _) = tokio::sync::broadcast::channel(32);
+
+    let state_broadcaster = state_tx.clone();
 
     let mut executor = Executor::new(ConfigGraph::default(), control_rx, state_tx)?;
 
-    // Test-Task: Schickt nach 500ms CreateChannel und nach weiteren 500ms RemoveChannel
+    let listener = start_server().await?;
+
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        println!("🚀 Sende CreateChannel für 'test1'...");
-        if let Err(e) = control_tx
-            .send(Envelope {
-                event: ControlEvent::CreateChannel {
-                    name: "test1".into(),
+        loop {
+            match listener.accept().await {
+                Ok((socket, _addr)) => {
+                    let control_tx = control_tx.clone();
+                    let state_rx = state_broadcaster.subscribe();
+                    tokio::spawn(handle_client(socket, control_tx, state_rx));
                 },
-                reply: None,
-            })
-            .await
-        {
-            eprintln!("Fehler beim Senden von CreateChannel: {e:?}");
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        println!("🚀 Sende CreateMix für 'test2'...");
-        if let Err(e) = control_tx
-            .send(Envelope {
-                event: ControlEvent::CreateMix {
-                    name: "test2".into(),
+                Err(e) => {
+                    eprintln!("connection error: {e}");
                 },
-                reply: None,
-            })
-            .await
-        {
-            eprintln!("Fehler beim Senden von CreateChannel: {e:?}");
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
-        println!("🗑️ Sende RemoveChannel für 'test1'...");
-        if let Err(e) = control_tx
-            .send(Envelope {
-                event: ControlEvent::RemoveChannel {
-                    name: "test1".into(),
-                },
-                reply: None,
-            })
-            .await
-        {
-            eprintln!("Fehler beim Senden von RemoveChannel: {e:?}");
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
-        println!("🗑️ Sende RemoveMix für 'test2'...");
-        if let Err(e) = control_tx
-            .send(Envelope {
-                event: ControlEvent::RemoveMix {
-                    name: "test2".into(),
-                },
-                reply: None,
-            })
-            .await
-        {
-            eprintln!("Fehler beim Senden von RemoveChannel: {e:?}");
-        }
-    });
-
-    // State-Listener
-    tokio::spawn(async move {
-        while let Ok(event) = state_rx.recv().await {
-            println!("📢 State Event empfangen: {event:?}");
+            }
         }
     });
 

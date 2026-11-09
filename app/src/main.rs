@@ -4,6 +4,7 @@
  */
 
 mod daemon;
+mod ipc;
 
 use clap::{
     Parser, Subcommand,
