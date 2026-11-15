@@ -14,7 +14,11 @@ use pipelink_jack::JackClient;
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
 use pipewire::channel::Sender as ChannelSender;
-use tokio::sync::{broadcast::Sender as Broadcast, mpsc::Receiver, oneshot::Sender};
+use tokio::sync::{
+    broadcast::Sender as Broadcast,
+    mpsc::{Receiver, UnboundedReceiver},
+    oneshot::Sender,
+};
 
 use crate::config::topology::ConfigGraph;
 
@@ -30,7 +34,7 @@ pub struct Executor {
     state_tx: Broadcast<StateEvent>,
     pw_service: Option<PipewireService>,
     pw_tx: ChannelSender<PipewireCommand>,
-    pw_rx: Receiver<PipewireEvent>,
+    pw_rx: UnboundedReceiver<PipewireEvent>,
     resolver: ProcessResolver,
     jack: JackClient,
 }
@@ -59,7 +63,7 @@ impl Executor {
         state_tx: Broadcast<StateEvent>,
     ) -> Result<Self, ExecutorError> {
         // tokio mpsc for incoming pipewire events
-        let (pw_event_tx, pw_event_rx) = tokio::sync::mpsc::channel(128);
+        let (pw_event_tx, pw_event_rx) = tokio::sync::mpsc::unbounded_channel();
 
         // start pipewire event loop in a dedicated background thread
         let pw_service = PipewireService::start(pw_event_tx)

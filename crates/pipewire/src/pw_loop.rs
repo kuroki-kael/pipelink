@@ -7,7 +7,7 @@ use std::{fmt, rc::Rc, thread};
 
 use pipelink_common::types::GlobalId;
 use pipewire::{channel, context::ContextRc, main_loop::MainLoopRc};
-use tokio::sync::mpsc::Sender as TokioSender;
+use tokio::sync::mpsc::UnboundedSender as TokioSender;
 use tracing::{debug, error, warn};
 
 use crate::{Command, LoopState, PipewireEvent};
@@ -99,7 +99,7 @@ impl PipewireService {
             })
             .register();
 
-        if let Err(e) = event_tx.blocking_send(PipewireEvent::Ready) {
+        if let Err(e) = event_tx.send(PipewireEvent::Ready) {
             warn!("Failed to notify Main Thread: {e}");
         }
 

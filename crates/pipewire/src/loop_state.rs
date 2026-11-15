@@ -21,7 +21,7 @@ use pipewire::{
     spa::utils::dict::DictRef,
     types::ObjectType,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error, warn};
 
 use crate::{Command, PipewireEvent, factory, module_handle::ModuleHandle};
@@ -48,7 +48,7 @@ impl LoopState {
         core: &Core,
         context: &Context,
         registry: &RegistryRc,
-        event_tx: &Sender<PipewireEvent>,
+        event_tx: &UnboundedSender<PipewireEvent>,
     ) {
         match cmd {
             Command::CoreSync => {
@@ -60,7 +60,7 @@ impl LoopState {
                 },
                 Err(e) => {
                     error!("Failed to create null sink: {e:?}");
-                    let _ = event_tx.blocking_send(PipewireEvent::ChannelCreationFailed {
+                    let _ = event_tx.send(PipewireEvent::ChannelCreationFailed {
                         name,
                         reason: e.to_string(),
                     });
@@ -74,7 +74,7 @@ impl LoopState {
             Command::DestroyNode { node_id } => {
                 if let Err(e) = registry.destroy_global(node_id.0).into_result() {
                     error!("Failed to destroy node {}: {e}", node_id.0);
-                    let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+                    let _ = event_tx.send(PipewireEvent::GlobalRemovalFailed {
                         id: GlobalId::from(node_id.0),
                         reason: e.to_string(),
                     });
@@ -113,7 +113,7 @@ impl LoopState {
                 },
                 Err(e) => {
                     error!("Failed to create loopback: {e:?}");
-                    let _ = event_tx.blocking_send(PipewireEvent::MixCreationFailed {
+                    let _ = event_tx.send(PipewireEvent::MixCreationFailed {
                         name,
                         reason: e.to_string(),
                     });
@@ -127,7 +127,7 @@ impl LoopState {
                     // Without the loopback there is nothing that could vanish,
                     // so the removal would never be confirmed.
                     error!("No loopback to destroy for mix '{}'", mix.name);
-                    let _ = event_tx.blocking_send(PipewireEvent::MixRemovalFailed {
+                    let _ = event_tx.send(PipewireEvent::MixRemovalFailed {
                         name: mix.name,
                         reason: "the loopback of the mix does not exist".to_string(),
                     });
@@ -171,7 +171,7 @@ impl LoopState {
         name: &ChannelName,
         id: NodeId,
         registry: &RegistryRc,
-        event_tx: &Sender<PipewireEvent>,
+        event_tx: &UnboundedSender<PipewireEvent>,
     ) {
         let is_active = self.active_nodes.borrow().contains_key(name);
 
@@ -182,7 +182,7 @@ impl LoopState {
                 },
                 Err(e) => {
                     error!("Failed to destroy the sink of channel '{name}': {e}");
-                    let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+                    let _ = event_tx.send(PipewireEvent::GlobalRemovalFailed {
                         id: GlobalId::from(id.0),
                         reason: e.to_string(),
                     });
@@ -191,7 +191,7 @@ impl LoopState {
         } else {
             // The sink is not there, so nothing can vanish.
             error!("No sink to destroy for channel '{name}'");
-            let _ = event_tx.blocking_send(PipewireEvent::GlobalRemovalFailed {
+            let _ = event_tx.send(PipewireEvent::GlobalRemovalFailed {
                 id: GlobalId::from(id.0),
                 reason: "the sink of the channel does not exist".to_string(),
             });
@@ -201,7 +201,7 @@ impl LoopState {
     pub(crate) fn handle_pipewire_event(
         &self,
         obj: &GlobalObject<&DictRef>,
-        event_tx: &Sender<PipewireEvent>,
+        event_tx: &UnboundedSender<PipewireEvent>,
         registry: &RegistryRc,
     ) {
         let Some(dict) = &obj.props else { return };
@@ -217,7 +217,7 @@ impl LoopState {
                         Ok(metadata) => {
                             debug!("Default metadata bound");
                             *self.default_metadata.borrow_mut() = Some(metadata);
-                            let _ = event_tx.blocking_send(PipewireEvent::MetadataAppeared {
+                            let _ = event_tx.send(PipewireEvent::MetadataAppeared {
                                 id: GlobalId::from(obj.id),
                             });
                         },
@@ -235,7 +235,7 @@ impl LoopState {
         &self,
         obj: &GlobalObject<&DictRef>,
         dict: &DictRef,
-        event_tx: &Sender<PipewireEvent>,
+        event_tx: &UnboundedSender<PipewireEvent>,
         registry: &RegistryRc,
     ) {
         let media_class = MediaClass::from_pw_str(dict.get("media.class").unwrap_or_default());
@@ -254,7 +254,7 @@ impl LoopState {
             .is_some_and(|n| n.starts_with("pipelink.") || n == JACK_CLIENT_NAME);
 
         if let Some(name) = dict.get("node.name") {
-            let _ = event_tx.blocking_send(PipewireEvent::NodeAppeared {
+            let _ = event_tx.send(PipewireEvent::NodeAppeared {
                 id,
                 name: NodeName::from(name),
                 media_class: media_class.clone(),
@@ -275,7 +275,7 @@ impl LoopState {
                 .add_listener_local()
                 .info(move |info| {
                     if let Some(props) = info.props() {
-                        let _ = tx.blocking_send(PipewireEvent::NodeInfo {
+                        let _ = tx.send(PipewireEvent::NodeInfo {
                             id,
                             node_name: props.get("node.name").map(NodeName::from),
                             app: props.get("application.name").map(ToString::to_string),
@@ -295,7 +295,7 @@ impl LoopState {
         }
     }
 
-    fn handle_port_appeared(obj_id: u32, dict: &DictRef, event_tx: &Sender<PipewireEvent>) {
+    fn handle_port_appeared(obj_id: u32, dict: &DictRef, event_tx: &UnboundedSender<PipewireEvent>) {
         if let (Some(node_id_str), Some(direction)) =
             (dict.get("node.id"), dict.get("port.direction"))
             && let Ok(node_id) = node_id_str.parse::<NodeId>()
@@ -303,7 +303,7 @@ impl LoopState {
             let channel = dict
                 .get("audio.channel")
                 .map_or(ChannelPosition::Other, ChannelPosition::from_pw_str);
-            let _ = event_tx.blocking_send(PipewireEvent::PortAppeared {
+            let _ = event_tx.send(PipewireEvent::PortAppeared {
                 id: PortId::from(obj_id),
                 node_id,
                 name: dict.get("port.name").map(ToString::to_string),
@@ -313,7 +313,7 @@ impl LoopState {
         }
     }
 
-    fn handle_link_appeared(obj_id: u32, dict: &DictRef, event_tx: &Sender<PipewireEvent>) {
+    fn handle_link_appeared(obj_id: u32, dict: &DictRef, event_tx: &UnboundedSender<PipewireEvent>) {
         if let (Some(out_node), Some(in_node), Some(out_port), Some(in_port)) = (
             dict.get("link.output.node")
                 .and_then(|s| s.parse::<NodeId>().ok()),
@@ -324,7 +324,7 @@ impl LoopState {
             dict.get("link.input.port")
                 .and_then(|s| s.parse::<PortId>().ok()),
         ) {
-            let _ = event_tx.blocking_send(PipewireEvent::LinkAppeared {
+            let _ = event_tx.send(PipewireEvent::LinkAppeared {
                 id: LinkId::from(obj_id),
                 out_node,
                 in_node,
@@ -334,8 +334,8 @@ impl LoopState {
         }
     }
 
-    pub(crate) fn global_removed(&self, id: GlobalId, event_tx: &Sender<PipewireEvent>) {
+    pub(crate) fn global_removed(&self, id: GlobalId, event_tx: &UnboundedSender<PipewireEvent>) {
         self.stream_listeners.borrow_mut().remove(&id.0);
-        let _ = event_tx.blocking_send(PipewireEvent::GlobalRemoved { id });
+        let _ = event_tx.send(PipewireEvent::GlobalRemoved { id });
     }
 }
