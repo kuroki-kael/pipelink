@@ -10,7 +10,7 @@ mod control_reply;
 mod state_event;
 
 pub use control_event::ControlEvent;
-pub use control_reply::{ActiveAppInfo, ControlReply};
+pub use control_reply::{ActiveAppInfo, ControlReply, OutputDeviceInfo};
 pub use state_event::StateEvent;
 
 #[cfg(test)]

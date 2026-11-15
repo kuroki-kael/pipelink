@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AppDisplay, ChannelName, MixName};
+use crate::types::{AppDisplay, ChannelName, MixName, NodeName};
 
 /// Events broadcast by the audio engine to notify listeners of state changes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,6 +132,23 @@ pub enum StateEvent {
         /// Application display name.
         app: AppDisplay,
         /// Reason the routing operation failed.
+        error: String,
+    },
+    /// Active mix output sink changed (either manually or via failover).
+    OutputChanged {
+        /// Newly selected output `node.name`.
+        output: NodeName,
+    },
+    /// Selecting the output sink failed.
+    OutputOperationFailed {
+        /// Reason the output update failed.
+        error: String,
+    },
+    /// Selecting a mix as the global active layer failed.
+    LayerSelectionFailed {
+        /// Mix name that could not be activated.
+        mix: MixName,
+        /// Reason the activation failed.
         error: String,
     },
 }

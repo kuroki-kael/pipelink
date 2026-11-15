@@ -9,4 +9,5 @@ pub mod channel;
 pub mod link;
 pub mod mix;
 pub mod node;
+pub mod output;
 pub mod port;

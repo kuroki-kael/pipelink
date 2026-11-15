@@ -5,7 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AppDisplay, ChannelName, MixName};
+use crate::{
+    graph::output::preferred_output_label,
+    types::{AppDisplay, ChannelName, MixName, NodeName},
+};
 
 /// Summary of an active resolved application in the graph.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +21,33 @@ pub struct ActiveAppInfo {
     pub channel: Option<ChannelName>,
     /// Number of active `PipeWire` stream nodes belonging to this app.
     pub stream_count: usize,
+}
+
+/// Summary of an available `PipeWire` audio output sink.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputDeviceInfo {
+    /// `PipeWire` `node.name`.
+    pub name: NodeName,
+    /// Human-readable device name (`node.description`), if set.
+    pub description: Option<String>,
+    /// Short device nickname (`node.nick`), if set.
+    pub nick: Option<String>,
+    /// `true` if backed by a hardware device (`device.id` present).
+    pub is_hardware: bool,
+    /// `true` if currently selected as the active mix output.
+    pub active: bool,
+}
+
+impl OutputDeviceInfo {
+    /// Preferred human-readable label (`description`, `nick`, or `name`).
+    #[must_use]
+    pub fn display_name(&self) -> &str {
+        preferred_output_label(
+            self.description.as_deref(),
+            self.nick.as_deref(),
+            &self.name,
+        )
+    }
 }
 
 /// Answer to a control event that asks for state.
@@ -41,4 +71,6 @@ pub enum ControlReply {
     },
     /// The active mix, if one is selected.
     ActiveMix { mix: Option<MixName> },
+    /// All available audio output sinks.
+    Outputs { outputs: Vec<OutputDeviceInfo> },
 }

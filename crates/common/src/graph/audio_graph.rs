@@ -5,8 +5,10 @@
 
 use crate::{
     error::ExecutorError,
-    graph::{app_node::AppNode, channel::Channel, link::StereoLink, mix::Mix},
-    types::{ChannelName, MixName, NodeId},
+    graph::{
+        app_node::AppNode, channel::Channel, link::StereoLink, mix::Mix, output::OutputDevice,
+    },
+    types::{ChannelName, MixName, NodeId, NodeName},
 };
 
 /// Routing entry pairing a single channel with a single mix in the N:M matrix.
@@ -67,6 +69,14 @@ pub struct AudioGraph {
     mixes: Vec<Mix>,
     /// Currently selected active mix, if any.
     pub active_mix: Option<MixName>,
+    /// Available audio output sinks discovered in `PipeWire`.
+    pub outputs: Vec<OutputDevice>,
+    /// Currently selected output sink node name, if any.
+    pub selected_output: Option<NodeName>,
+    /// Stereo link pair connecting the active mix source to the selected output.
+    pub active_output_links: StereoLink,
+    /// Guards against dispatching duplicate output link requests while awaiting `PipeWire`.
+    pub output_links_requested: bool,
     /// `PipeWire` node id of the `PipeLink` `JACK` client, once discovered.
     pub jack_node_id: Option<NodeId>,
     /// Active stereo links between `PipeWire` nodes.
@@ -108,23 +118,54 @@ impl AudioGraph {
         &self.ch_mix_matrix
     }
 
-    /// Returns the row index of `channel`, if present.
+    /// Returns the row index of `channel` (case-insensitive), if present.
     pub fn channel_index(&self, channel: &ChannelName) -> Option<usize> {
-        self.channels.iter().position(|c| c.name == *channel)
+        self.channels
+            .iter()
+            .position(|c| c.name == *channel)
+            .or_else(|| {
+                self.channels
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(channel))
+            })
     }
 
-    /// Returns the column index of `mix`, if present.
+    /// Returns the column index of `mix` (case-insensitive), if present.
     pub fn mix_index(&self, mix: &MixName) -> Option<usize> {
-        self.mixes.iter().position(|m| m.name == *mix)
+        self.mixes
+            .iter()
+            .position(|m| m.name == *mix)
+            .or_else(|| {
+                self.mixes
+                    .iter()
+                    .position(|m| m.name.eq_ignore_ascii_case(mix))
+            })
+    }
+
+    /// Resolves `channel` case-insensitively to its stored canonical name.
+    #[must_use]
+    pub fn resolve_channel_name(&self, channel: &ChannelName) -> Option<ChannelName> {
+        self.channel_index(channel)
+            .map(|idx| self.channels[idx].name.clone())
+    }
+
+    /// Resolves `mix` case-insensitively to its stored canonical name.
+    #[must_use]
+    pub fn resolve_mix_name(&self, mix: &MixName) -> Option<MixName> {
+        self.mix_index(mix).map(|idx| self.mixes[idx].name.clone())
     }
 
     /// Adds a new channel and appends its routing row across all existing mixes.
     ///
     /// # Errors
     /// Returns [`ExecutorError::ChannelExists`] if a channel with the same name
-    /// already exists in the graph.
+    /// (case-insensitive) already exists in the graph.
     pub fn add_channel(&mut self, channel: ChannelName) -> Result<(), ExecutorError> {
-        if self.channels.iter().any(|c| c.name == *channel) {
+        if self
+            .channels
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case(&channel))
+        {
             return Err(ExecutorError::ChannelExists(channel));
         }
 
@@ -162,9 +203,9 @@ impl AudioGraph {
     ///
     /// # Errors
     /// Returns [`ExecutorError::MixExists`] if a mix with the same name
-    /// already exists in the graph.
+    /// (case-insensitive) already exists in the graph.
     pub fn add_mix(&mut self, mix: MixName) -> Result<(), ExecutorError> {
-        if self.mixes.iter().any(|m| m.name == *mix) {
+        if self.mixes.iter().any(|m| m.name.eq_ignore_ascii_case(&mix)) {
             return Err(ExecutorError::MixExists(mix));
         }
 
@@ -422,5 +463,23 @@ mod tests {
                 .is_none()
         );
         assert!(graph.get_route_mut(&ch("music"), &mix("unknown")).is_none());
+    }
+
+    #[test]
+    fn test_case_insensitive_route_lookup_preserves_original_casing() {
+        let mut graph = AudioGraph::new();
+        graph.add_channel(ch("Music")).unwrap();
+        graph.add_mix(mix("Personal")).unwrap();
+
+        assert!(graph.add_channel(ch("music")).is_err());
+        assert!(graph.add_mix(mix("PERSONAL")).is_err());
+
+        assert_eq!(graph.channels()[0].name, ch("Music"));
+        assert_eq!(graph.mixes()[0].name, mix("Personal"));
+        assert_eq!(graph.resolve_channel_name(&ch("music")), Some(ch("Music")));
+        assert_eq!(graph.resolve_mix_name(&mix("personal")), Some(mix("Personal")));
+
+        graph.get_route_mut(&ch("music"), &mix("personal")).unwrap().active = true;
+        assert!(graph.get_route(&ch("MUSIC"), &mix("Personal")).unwrap().active);
     }
 }

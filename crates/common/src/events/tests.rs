@@ -7,8 +7,8 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::{ActiveAppInfo, ControlEvent, ControlReply, StateEvent};
-use crate::types::{AppDisplay, ChannelName, MixName};
+use super::{ActiveAppInfo, ControlEvent, ControlReply, OutputDeviceInfo, StateEvent};
+use crate::types::{AppDisplay, ChannelName, MixName, NodeName};
 
 #[test]
 fn test_control_event_json_format() {
@@ -205,4 +205,57 @@ fn test_app_routing_events_and_replies_round_trip() {
         serde_json::from_str::<StateEvent>(&state_json).unwrap(),
         state
     );
+}
+
+#[test]
+fn test_output_events_and_replies_round_trip() {
+    let set_output = ControlEvent::SetOutput {
+        output: "Built-in Audio".to_string(),
+    };
+    let json = serde_json::to_string(&set_output).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ControlEvent>(&json).unwrap(),
+        set_output
+    );
+
+    let list_outputs = ControlEvent::ListOutputs;
+    let list_json = serde_json::to_string(&list_outputs).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ControlEvent>(&list_json).unwrap(),
+        list_outputs
+    );
+
+    let outputs_reply = ControlReply::Outputs {
+        outputs: vec![OutputDeviceInfo {
+            name: NodeName::from("alsa_output.pci.analog-stereo"),
+            description: Some("Built-in Audio".to_string()),
+            nick: Some("ALC897 Analog".to_string()),
+            is_hardware: true,
+            active: true,
+        }],
+    };
+    let reply_json = serde_json::to_string(&outputs_reply).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ControlReply>(&reply_json).unwrap(),
+        outputs_reply
+    );
+
+    for state in [
+        StateEvent::OutputChanged {
+            output: NodeName::from("alsa_output.pci.analog-stereo"),
+        },
+        StateEvent::OutputOperationFailed {
+            error: "no matching output".to_string(),
+        },
+        StateEvent::LayerSelectionFailed {
+            mix: MixName::from("stream"),
+            error: "mix not found".to_string(),
+        },
+    ] {
+        let state_json = serde_json::to_string(&state).unwrap();
+        assert_eq!(
+            serde_json::from_str::<StateEvent>(&state_json).unwrap(),
+            state
+        );
+    }
 }

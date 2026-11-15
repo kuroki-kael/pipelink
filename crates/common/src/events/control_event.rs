@@ -101,4 +101,11 @@ pub enum ControlEvent {
     ListMixChannels,
     /// Requests the globally active mix.
     GetActiveMix,
+    /// Requests all available audio output sinks.
+    ListOutputs,
+    /// Selects the audio output sink for the active mix.
+    SetOutput {
+        /// Output `node.name`, description, or nick.
+        output: String,
+    },
 }
