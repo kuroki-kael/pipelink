@@ -4,6 +4,7 @@
  */
 
 pub mod app_node;
+pub mod audio_graph;
 pub mod channel;
 pub mod link;
 pub mod mix;

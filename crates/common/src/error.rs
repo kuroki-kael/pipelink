@@ -5,6 +5,8 @@
 
 use thiserror::Error;
 
+use crate::types::{ChannelName, MixName};
+
 /// Errors raised by the audio engine while coordinating the routing graph.
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -17,4 +19,10 @@ pub enum ExecutorError {
 
     #[error("Internal channel closed")]
     ChannelClosed,
+
+    #[error("Channel already exists: {0}")]
+    ChannelExists(ChannelName),
+
+    #[error("Mix already exists: {0}")]
+    MixExists(MixName),
 }
