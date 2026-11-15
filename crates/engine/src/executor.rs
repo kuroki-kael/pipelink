@@ -10,6 +10,7 @@ use pipelink_common::{
     events::{ControlEvent, ControlReply, StateEvent},
     graph::audio_graph::AudioGraph,
 };
+use pipelink_jack::JackClient;
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
 use pipewire::channel::Sender as ChannelSender;
@@ -31,6 +32,7 @@ pub struct Executor {
     pw_tx: ChannelSender<PipewireCommand>,
     pw_rx: Receiver<PipewireEvent>,
     resolver: ProcessResolver,
+    jack: JackClient,
 }
 
 impl fmt::Debug for Executor {
@@ -64,6 +66,8 @@ impl Executor {
             .map_err(|e| ExecutorError::Pipewire(e.to_string()))?;
         let pw_tx = pw_service.command_sender();
 
+        let jack = JackClient::start().map_err(|e| ExecutorError::Jack(e.to_string()))?;
+
         Ok(Self {
             config,
             graph: AudioGraph::default(),
@@ -73,6 +77,7 @@ impl Executor {
             pw_tx,
             pw_rx: pw_event_rx,
             resolver: ProcessResolver::new(),
+            jack,
         })
     }
 
@@ -108,12 +113,28 @@ impl Executor {
             ControlEvent::RemoveChannel { name } => self.on_remove_channel(name)?,
             ControlEvent::CreateMix { name } => self.on_create_mix(name)?,
             ControlEvent::RemoveMix { name } => self.on_remove_mix(name)?,
-            ControlEvent::SetChannelGain { .. }
-            | ControlEvent::SetChannelMute { .. }
-            | ControlEvent::SelectGlobalActiveLayer { .. }
+            ControlEvent::AddChannelMix { channel, mix } => {
+                self.on_add_channel_mix(channel, mix)?;
+            },
+            ControlEvent::RemoveChannelMix { channel, mix } => {
+                self.on_remove_channel_mix(channel, mix)?;
+            },
+            ControlEvent::SetChannelGain {
+                channel,
+                mix,
+                percent,
+            } => {
+                self.on_set_channel_gain(channel, mix, percent)?;
+            },
+            ControlEvent::SetChannelMute {
+                channel,
+                mix,
+                muted,
+            } => {
+                self.on_set_channel_mute(channel, mix, muted)?;
+            },
+            ControlEvent::SelectGlobalActiveLayer { .. }
             | ControlEvent::SelectChannelActiveLayer { .. }
-            | ControlEvent::AddChannelMix { .. }
-            | ControlEvent::RemoveChannelMix { .. }
             | _ => {},
         }
 

@@ -175,6 +175,9 @@ impl Executor {
             .position(|c| c.node.id == Some(id))
             .map(|pos| self.graph.remove_channel_idx(pos))
         {
+            if let Err(err) = self.jack.remove_channel(&channel.name) {
+                warn!("Failed to remove JACK channel '{}': {err}", channel.name);
+            }
             let _ = self.state_tx.send(StateEvent::ChannelRemoved {
                 channel: channel.name,
             });
@@ -186,6 +189,9 @@ impl Executor {
             .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
             .map(|pos| self.graph.remove_mix_idx(pos))
         {
+            if let Err(err) = self.jack.remove_mix(&mix.name) {
+                warn!("Failed to remove JACK mix '{}': {err}", mix.name);
+            }
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
         }
 
@@ -235,6 +241,9 @@ impl Executor {
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
         self.graph.remove_channel(&name);
+        if let Err(err) = self.jack.remove_channel(&name) {
+            warn!("Failed to remove JACK channel '{name}': {err}");
+        }
 
         warn!("Channel '{name}' could not be created: {reason}");
 
@@ -260,6 +269,9 @@ impl Executor {
     /// out again once the creation fails.
     pub(super) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
         self.graph.remove_mix(&name);
+        if let Err(err) = self.jack.remove_mix(&name) {
+            warn!("Failed to remove JACK mix '{name}': {err}");
+        }
 
         warn!("Mix '{name}' could not be created: {reason}");
 
