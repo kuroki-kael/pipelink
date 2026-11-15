@@ -140,7 +140,7 @@ async fn run_command(command: Command) {
                 std::process::exit(1);
             }
         },
-        Command::Route { action } => route::run(action),
+        Command::Route { action } => route::run(action).await,
         Command::Channel { action } => channel::run(action).await,
         Command::Mix { action } => mix::run(action).await,
     }
