@@ -34,6 +34,7 @@ pub struct JackClient {
     mix_names: Vec<MixName>,
     cmd_tx: Producer<Command>,
     retired_rx: Consumer<RetiredResource>,
+    pending_reclaims: usize,
 }
 
 impl JackClient {
@@ -56,6 +57,7 @@ impl JackClient {
             mix_names: Vec::new(),
             cmd_tx,
             retired_rx,
+            pending_reclaims: 0,
         })
     }
 
@@ -64,10 +66,17 @@ impl JackClient {
         self.client.as_client().name()
     }
 
+    /// Returns the number of retired port sets awaiting cleanup from the audio thread.
+    #[must_use]
+    pub const fn pending_reclaims(&self) -> usize {
+        self.pending_reclaims
+    }
+
     /// Unregisters any ports retired by the audio thread.
     pub fn reclaim(&mut self) {
         while let Ok(resource) = self.retired_rx.pop() {
             Self::cleanup_retired(self.client.as_client(), resource);
+            self.pending_reclaims = self.pending_reclaims.saturating_sub(1);
         }
     }
 
@@ -113,6 +122,7 @@ impl JackClient {
 
         self.send_command(Command::RemoveChannel(idx))?;
         self.channel_names.remove(idx);
+        self.pending_reclaims += 1;
         Ok(())
     }
 
@@ -158,6 +168,7 @@ impl JackClient {
 
         self.send_command(Command::RemoveMix(idx))?;
         self.mix_names.remove(idx);
+        self.pending_reclaims += 1;
         Ok(())
     }
 
