@@ -18,20 +18,29 @@ use crate::ports::{ChannelPorts, MixPorts};
 /// Commands sent from [`JackClient`] to the real-time [`process::JackProcess`].
 #[derive(Debug)]
 pub(crate) enum Command {
-    CreateChannel(ChannelPorts),
-    RemoveChannel(usize),
-    CreateMix(MixPorts),
-    RemoveMix(usize),
-    SetRoute {
-        channel_idx: usize,
-        mix_idx: usize,
-        gain: f32,
+    CreateChannel {
+        ports: ChannelPorts,
+        gains: Vec<f32>,
     },
+    RemoveChannel {
+        idx: usize,
+        gains: Vec<f32>,
+    },
+    CreateMix {
+        ports: MixPorts,
+        gains: Vec<f32>,
+    },
+    RemoveMix {
+        idx: usize,
+        gains: Vec<f32>,
+    },
+    SetGains(Vec<f32>),
 }
 
-/// Ports retired by the audio thread for off-thread unregistration.
+/// Resources retired by the audio thread for off-thread cleanup and deallocation.
 #[derive(Debug)]
 pub(crate) enum RetiredResource {
     Channel(ChannelPorts),
     Mix(MixPorts),
+    Gains(Vec<f32>),
 }

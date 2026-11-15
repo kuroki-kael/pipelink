@@ -32,7 +32,7 @@ impl Executor {
             return Ok(());
         }
 
-        if let Err(err) = self.jack.create_channel(&name) {
+        if let Err(err) = self.jack.create_channel(&name, self.graph.gains_snapshot()) {
             self.graph.remove_channel(&name);
             if matches!(err, JackError::ChannelClosed) {
                 return Err(ExecutorError::Jack(err.to_string()));
@@ -49,7 +49,9 @@ impl Executor {
             name: name.clone(),
         }) {
             self.graph.remove_channel(&name);
-            let _ = self.jack.remove_channel(&name);
+            let _ = self
+                .jack
+                .remove_channel(&name, self.graph.gains_snapshot());
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
@@ -75,7 +77,10 @@ impl Executor {
 
         if channel.node.id.is_none() {
             self.graph.remove_channel(&name);
-            if let Err(err) = self.jack.remove_channel(&name) {
+            if let Err(err) = self
+                .jack
+                .remove_channel(&name, self.graph.gains_snapshot())
+            {
                 warn!("Failed to remove JACK channel '{name}': {err}");
             }
             let _ = self
@@ -102,7 +107,7 @@ impl Executor {
             return Ok(());
         }
 
-        if let Err(err) = self.jack.create_mix(&name) {
+        if let Err(err) = self.jack.create_mix(&name, self.graph.gains_snapshot()) {
             self.graph.remove_mix(&name);
             if matches!(err, JackError::ChannelClosed) {
                 return Err(ExecutorError::Jack(err.to_string()));
@@ -119,7 +124,7 @@ impl Executor {
             name: name.clone(),
         }) {
             self.graph.remove_mix(&name);
-            let _ = self.jack.remove_mix(&name);
+            let _ = self.jack.remove_mix(&name, self.graph.gains_snapshot());
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
@@ -146,7 +151,7 @@ impl Executor {
         if mix.sink.id.is_none() && mix.source.id.is_none() {
             // The loopback was never created, so there is nothing to destroy.
             self.graph.remove_mix(&name);
-            if let Err(err) = self.jack.remove_mix(&name) {
+            if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
                 warn!("Failed to remove JACK mix '{name}': {err}");
             }
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
@@ -260,8 +265,11 @@ impl Executor {
         };
 
         update(&mut next);
+        let gains = self
+            .graph
+            .gains_with_override(channel, mix, next.effective_gain());
 
-        match self.jack.set_route(channel, mix, next.effective_gain()) {
+        match self.jack.sync_gains(gains) {
             Ok(()) => {
                 if let Some(slot) = self.graph.get_route_mut(channel, mix) {
                     *slot = next.clone();
@@ -284,13 +292,16 @@ impl Executor {
     }
 }
 
-/// Clamps negative or non-finite percentages to `0.0`.
+/// Upper limit for user-configured channel-to-mix gain percentages (+12 dB).
+const MAX_GAIN_PERCENT: f32 = 400.0;
+
+/// Clamps non-finite or negative percentages to `0.0` and caps at `MAX_GAIN_PERCENT`.
 #[inline]
 fn normalize_percent(percent: f32) -> f32 {
     if !percent.is_finite() || percent <= 0.0 {
         0.0
     } else {
-        percent
+        percent.min(MAX_GAIN_PERCENT)
     }
 }
 
@@ -309,8 +320,11 @@ mod tests {
         assert!((percent_to_linear(100.0) - 1.0).abs() < f32::EPSILON);
         assert!((percent_to_linear(50.0) - 0.5).abs() < f32::EPSILON);
         assert!((percent_to_linear(150.0) - 1.5).abs() < f32::EPSILON);
+        assert!((percent_to_linear(400.0) - 4.0).abs() < f32::EPSILON);
+        assert!((percent_to_linear(500.0) - 4.0).abs() < f32::EPSILON);
         assert!((percent_to_linear(0.0) - 0.0).abs() < f32::EPSILON);
         assert!((percent_to_linear(-10.0) - 0.0).abs() < f32::EPSILON);
         assert!((percent_to_linear(f32::NAN) - 0.0).abs() < f32::EPSILON);
+        assert!((percent_to_linear(f32::INFINITY) - 0.0).abs() < f32::EPSILON);
     }
 }

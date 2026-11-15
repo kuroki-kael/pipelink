@@ -11,6 +11,7 @@ use pipelink_common::{
         app_node::AppNode,
         link::{LinkEndpoint, StereoLink},
         node::Node,
+        port::MixerPort,
     },
     types::{
         ChannelName, ChannelPosition, GlobalId, LinkId, MixName, NodeId, NodeName, NodeSerial, Pid,
@@ -22,34 +23,6 @@ use pipelink_resolver::is_process_alive;
 use tracing::{info, warn};
 
 use crate::executor::Executor;
-
-#[derive(Debug, PartialEq, Eq)]
-enum JackPortKind<'a> {
-    ChannelInput {
-        channel: &'a str,
-        pos: ChannelPosition,
-    },
-    MixOutput {
-        mix: &'a str,
-        pos: ChannelPosition,
-    },
-}
-
-fn parse_jack_port_name(name: &str) -> Option<JackPortKind<'_>> {
-    let (pos, stem) = if let Some(s) = name.strip_suffix("_FL") {
-        (ChannelPosition::FrontLeft, s)
-    } else {
-        (ChannelPosition::FrontRight, name.strip_suffix("_FR")?)
-    };
-
-    if let Some(channel) = stem.strip_prefix("in_") {
-        (!channel.is_empty()).then_some(JackPortKind::ChannelInput { channel, pos })
-    } else if let Some(mix) = stem.strip_prefix("out_") {
-        (!mix.is_empty()).then_some(JackPortKind::MixOutput { mix, pos })
-    } else {
-        None
-    }
-}
 
 impl Executor {
     /// Registers a newly appeared node on the channel, mix, or `JACK` client it belongs to.
@@ -165,8 +138,11 @@ impl Executor {
             return;
         };
 
-        match parse_jack_port_name(port_name) {
-            Some(JackPortKind::ChannelInput { channel, pos }) => {
+        match MixerPort::from_name(port_name) {
+            Some(MixerPort::ChannelInput {
+                channel,
+                position: pos,
+            }) => {
                 if let Some(ch) = self
                     .graph
                     .channels_mut()
@@ -178,7 +154,7 @@ impl Executor {
                     self.dispatch_create_link(stereo_link);
                 }
             },
-            Some(JackPortKind::MixOutput { mix, pos }) => {
+            Some(MixerPort::MixOutput { mix, position: pos }) => {
                 if let Some(m) = self.graph.mixes_mut().iter_mut().find(|m| m.name == mix)
                     && m.jack_ports.set_port(pos, port_id)
                     && let Some(stereo_link) = m.prepare_links(jack_id)
@@ -340,7 +316,10 @@ impl Executor {
             .position(|c| c.node.id == Some(id))
             .map(|pos| self.graph.remove_channel_idx(pos))
         {
-            if let Err(err) = self.jack.remove_channel(&channel.name) {
+            if let Err(err) = self
+                .jack
+                .remove_channel(&channel.name, self.graph.gains_snapshot())
+            {
                 warn!("Failed to remove JACK channel '{}': {err}", channel.name);
             }
             let _ = self.state_tx.send(StateEvent::ChannelRemoved {
@@ -354,7 +333,7 @@ impl Executor {
             .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
             .map(|pos| self.graph.remove_mix_idx(pos))
         {
-            if let Err(err) = self.jack.remove_mix(&mix.name) {
+            if let Err(err) = self.jack.remove_mix(&mix.name, self.graph.gains_snapshot()) {
                 warn!("Failed to remove JACK mix '{}': {err}", mix.name);
             }
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
@@ -408,7 +387,10 @@ impl Executor {
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
         self.graph.remove_channel(&name);
-        if let Err(err) = self.jack.remove_channel(&name) {
+        if let Err(err) = self
+            .jack
+            .remove_channel(&name, self.graph.gains_snapshot())
+        {
             warn!("Failed to remove JACK channel '{name}': {err}");
         }
 
@@ -436,7 +418,7 @@ impl Executor {
     /// out again once the creation fails.
     pub(super) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
         self.graph.remove_mix(&name);
-        if let Err(err) = self.jack.remove_mix(&name) {
+        if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK mix '{name}': {err}");
         }
 
@@ -446,47 +428,5 @@ impl Executor {
             mix: name,
             error: reason.to_string(),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_jack_port_name_channels_and_mixes() {
-        assert_eq!(
-            parse_jack_port_name("in_Game_FL"),
-            Some(JackPortKind::ChannelInput {
-                channel: "Game",
-                pos: ChannelPosition::FrontLeft,
-            })
-        );
-        assert_eq!(
-            parse_jack_port_name("in_game_audio_FR"),
-            Some(JackPortKind::ChannelInput {
-                channel: "game_audio",
-                pos: ChannelPosition::FrontRight,
-            })
-        );
-        assert_eq!(
-            parse_jack_port_name("out_Main_FL"),
-            Some(JackPortKind::MixOutput {
-                mix: "Main",
-                pos: ChannelPosition::FrontLeft,
-            })
-        );
-        assert_eq!(
-            parse_jack_port_name("out_stream_mix_FR"),
-            Some(JackPortKind::MixOutput {
-                mix: "stream_mix",
-                pos: ChannelPosition::FrontRight,
-            })
-        );
-
-        assert_eq!(parse_jack_port_name("in__FL"), None);
-        assert_eq!(parse_jack_port_name("out__FR"), None);
-        assert_eq!(parse_jack_port_name("in_Game_MONO"), None);
-        assert_eq!(parse_jack_port_name("playback_FL"), None);
     }
 }

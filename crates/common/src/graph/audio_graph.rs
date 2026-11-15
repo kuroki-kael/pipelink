@@ -237,6 +237,35 @@ impl AudioGraph {
         let idx = self.matrix_index(channel_idx, mix_idx)?;
         self.ch_mix_matrix.get_mut(idx)
     }
+
+    /// Builds a flat row-major (`channels × mixes`) slice of effective linear gains
+    /// ready to be pushed to the real-time audio mixer.
+    #[must_use]
+    pub fn gains_snapshot(&self) -> Vec<f32> {
+        self.ch_mix_matrix
+            .iter()
+            .map(ChannelMix::effective_gain)
+            .collect()
+    }
+
+    /// Builds a gains snapshot with `(channel, mix)` replaced by `override_gain`,
+    /// allowing the caller to sync the real-time mixer before committing the cell.
+    #[must_use]
+    pub fn gains_with_override(
+        &self,
+        channel: &ChannelName,
+        mix: &MixName,
+        override_gain: f32,
+    ) -> Vec<f32> {
+        let mut gains = self.gains_snapshot();
+        if let Some(ch_idx) = self.channel_index(channel)
+            && let Some(mix_idx) = self.mix_index(mix)
+            && let Some(idx) = self.matrix_index(ch_idx, mix_idx)
+        {
+            gains[idx] = override_gain;
+        }
+        gains
+    }
 }
 
 #[cfg(test)]

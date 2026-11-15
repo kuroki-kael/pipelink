@@ -4,6 +4,10 @@
  */
 
 use jack::{AudioIn, AudioOut, Port};
+use pipelink_common::{
+    graph::port::MixerPort,
+    types::{ChannelName, ChannelPosition, MixName},
+};
 
 /// Alias for [`ChannelInputPorts`].
 pub type ChannelPorts = ChannelInputPorts;
@@ -29,9 +33,26 @@ impl ChannelInputPorts {
     /// # Errors
     ///
     /// Returns a [`jack::Error`] if registration failed.
-    pub fn register(client: &jack::Client, channel_name: &str) -> Result<Self, jack::Error> {
-        let in_l = client.register_port(&format!("in_{channel_name}_FL"), AudioIn::default())?;
-        let in_r = client.register_port(&format!("in_{channel_name}_FR"), AudioIn::default())?;
+    pub fn register(client: &jack::Client, channel_name: &ChannelName) -> Result<Self, jack::Error> {
+        let left_name = MixerPort::ChannelInput {
+            channel: channel_name.clone(),
+            position: ChannelPosition::FrontLeft,
+        }
+        .name();
+        let right_name = MixerPort::ChannelInput {
+            channel: channel_name.clone(),
+            position: ChannelPosition::FrontRight,
+        }
+        .name();
+
+        let in_l = client.register_port(&left_name, AudioIn::default())?;
+        let in_r = match client.register_port(&right_name, AudioIn::default()) {
+            Ok(port) => port,
+            Err(err) => {
+                let _ = client.unregister_port(in_l);
+                return Err(err);
+            },
+        };
         Ok(Self { in_l, in_r })
     }
 
@@ -62,9 +83,26 @@ impl MixOutputPorts {
     /// # Errors
     ///
     /// Returns a [`jack::Error`] if registration failed.
-    pub fn register(client: &jack::Client, mix_name: &str) -> Result<Self, jack::Error> {
-        let out_l = client.register_port(&format!("out_{mix_name}_FL"), AudioOut::default())?;
-        let out_r = client.register_port(&format!("out_{mix_name}_FR"), AudioOut::default())?;
+    pub fn register(client: &jack::Client, mix_name: &MixName) -> Result<Self, jack::Error> {
+        let left_name = MixerPort::MixOutput {
+            mix: mix_name.clone(),
+            position: ChannelPosition::FrontLeft,
+        }
+        .name();
+        let right_name = MixerPort::MixOutput {
+            mix: mix_name.clone(),
+            position: ChannelPosition::FrontRight,
+        }
+        .name();
+
+        let out_l = client.register_port(&left_name, AudioOut::default())?;
+        let out_r = match client.register_port(&right_name, AudioOut::default()) {
+            Ok(port) => port,
+            Err(err) => {
+                let _ = client.unregister_port(out_l);
+                return Err(err);
+            },
+        };
         Ok(Self { out_l, out_r })
     }
 

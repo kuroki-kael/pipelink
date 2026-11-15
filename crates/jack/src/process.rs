@@ -20,13 +20,12 @@ pub(crate) struct JackProcess {
     channels: Vec<ChannelPorts>,
     mixes: Vec<MixPorts>,
     gains: Vec<f32>,
-    scratch_gains: Vec<f32>,
     cmd_rx: Consumer<Command>,
     retired_tx: Producer<RetiredResource>,
 }
 
 impl JackProcess {
-    /// Creates a new process handler with pre-reserved channel, mix, and matrix storage.
+    /// Creates a new process handler with pre-reserved channel and mix port storage.
     pub(crate) fn new(
         cmd_rx: Consumer<Command>,
         retired_tx: Producer<RetiredResource>,
@@ -34,8 +33,7 @@ impl JackProcess {
         Self {
             channels: Vec::with_capacity(INITIAL_PORT_CAPACITY),
             mixes: Vec::with_capacity(INITIAL_PORT_CAPACITY),
-            gains: Vec::with_capacity(INITIAL_PORT_CAPACITY * INITIAL_PORT_CAPACITY),
-            scratch_gains: Vec::with_capacity(INITIAL_PORT_CAPACITY * INITIAL_PORT_CAPACITY),
+            gains: Vec::new(),
             cmd_rx,
             retired_tx,
         }
@@ -48,66 +46,42 @@ impl JackProcess {
         }
     }
 
-    /// Applies a single control command while keeping `gains` aligned with `channels × mixes`.
+    /// Applies a single control command using the pre-built gains slice from the engine.
     fn apply_command(&mut self, cmd: Command) {
         match cmd {
-            Command::CreateChannel(ports) => {
+            Command::CreateChannel { ports, gains } => {
                 self.channels.push(ports);
-                self.gains.resize(self.channels.len() * self.mixes.len(), 0.0);
+                self.replace_gains(gains);
             },
-            Command::RemoveChannel(idx) => {
+            Command::RemoveChannel { idx, gains } => {
                 if idx < self.channels.len() {
-                    let num_mixes = self.mixes.len();
-                    let row_start = idx * num_mixes;
-                    self.gains.drain(row_start..row_start + num_mixes);
-
                     let old_ports = self.channels.remove(idx);
                     let _ = self.retired_tx.push(RetiredResource::Channel(old_ports));
                 }
+                self.replace_gains(gains);
             },
-            Command::CreateMix(ports) => {
-                let old_cols = self.mixes.len();
-                let num_channels = self.channels.len();
-
-                self.scratch_gains.clear();
-                for row in 0..num_channels {
-                    let start = row * old_cols;
-                    self.scratch_gains
-                        .extend_from_slice(&self.gains[start..start + old_cols]);
-                    self.scratch_gains.push(0.0);
-                }
-
-                std::mem::swap(&mut self.gains, &mut self.scratch_gains);
+            Command::CreateMix { ports, gains } => {
                 self.mixes.push(ports);
+                self.replace_gains(gains);
             },
-            Command::RemoveMix(idx) => {
+            Command::RemoveMix { idx, gains } => {
                 if idx < self.mixes.len() {
-                    let old_cols = self.mixes.len();
-                    let num_channels = self.channels.len();
-
-                    for row in (0..num_channels).rev() {
-                        self.gains.remove(row * old_cols + idx);
-                    }
-
                     let old_ports = self.mixes.remove(idx);
                     let _ = self.retired_tx.push(RetiredResource::Mix(old_ports));
                 }
+                self.replace_gains(gains);
             },
-            Command::SetRoute {
-                channel_idx,
-                mix_idx,
-                gain,
-            } => {
-                self.set_route_gain(channel_idx, mix_idx, gain);
+            Command::SetGains(gains) => {
+                self.replace_gains(gains);
             },
         }
     }
 
     #[inline]
-    fn set_route_gain(&mut self, channel_idx: usize, mix_idx: usize, gain: f32) {
-        let num_mixes = self.mixes.len();
-        if channel_idx < self.channels.len() && mix_idx < num_mixes {
-            self.gains[channel_idx * num_mixes + mix_idx] = gain;
+    fn replace_gains(&mut self, new_gains: Vec<f32>) {
+        let old_gains = std::mem::replace(&mut self.gains, new_gains);
+        if old_gains.capacity() > 0 {
+            let _ = self.retired_tx.push(RetiredResource::Gains(old_gains));
         }
     }
 
@@ -184,28 +158,45 @@ mod tests {
     }
 
     #[test]
-    fn test_set_route_gain_ignores_out_of_bounds_without_panicking() {
+    fn test_set_gains_replaces_slice_and_retires_previous_buffer() {
         let (_cmd_tx, cmd_rx) = RingBuffer::new(8);
-        let (retired_tx, _retired_rx) = RingBuffer::new(8);
+        let (retired_tx, mut retired_rx) = RingBuffer::new(8);
         let mut process = JackProcess::new(cmd_rx, retired_tx);
-        process.gains = vec![1.0, 0.0];
 
-        process.apply_command(Command::SetRoute {
-            channel_idx: 0,
-            mix_idx: 0,
-            gain: 0.5,
-        });
-        assert_eq!(process.gains, vec![1.0, 0.0]);
+        process.apply_command(Command::SetGains(vec![1.0, 0.5]));
+        assert_eq!(process.gains, vec![1.0, 0.5]);
+        assert!(retired_rx.pop().is_err());
+
+        process.apply_command(Command::SetGains(vec![0.25, 0.75]));
+        assert_eq!(process.gains, vec![0.25, 0.75]);
+        assert!(matches!(
+            retired_rx.pop(),
+            Ok(RetiredResource::Gains(old)) if old == vec![1.0, 0.5]
+        ));
     }
 
     #[test]
-    fn test_drain_commands_processes_route_updates_when_channels_empty() {
+    fn test_drain_commands_handles_out_of_bounds_removals_safely() {
         let (mut cmd_tx, cmd_rx) = RingBuffer::new(8);
         let (retired_tx, _retired_rx) = RingBuffer::new(8);
         let mut process = JackProcess::new(cmd_rx, retired_tx);
 
-        assert!(cmd_tx.push(Command::RemoveChannel(0)).is_ok());
-        assert!(cmd_tx.push(Command::RemoveMix(0)).is_ok());
+        assert!(
+            cmd_tx
+                .push(Command::RemoveChannel {
+                    idx: 0,
+                    gains: Vec::new()
+                })
+                .is_ok()
+        );
+        assert!(
+            cmd_tx
+                .push(Command::RemoveMix {
+                    idx: 0,
+                    gains: Vec::new()
+                })
+                .is_ok()
+        );
         process.drain_commands();
 
         assert!(process.channels.is_empty());
