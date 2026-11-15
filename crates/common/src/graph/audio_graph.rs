@@ -45,6 +45,17 @@ impl ChannelMix {
             ..Default::default()
         }
     }
+
+    /// Returns the effective linear gain (`0.0` when inactive or muted).
+    #[inline]
+    #[must_use]
+    pub fn effective_gain(&self) -> f32 {
+        if self.active && !self.muted {
+            self.gain
+        } else {
+            0.0
+        }
+    }
 }
 
 /// In-memory state of the audio routing graph.
@@ -90,6 +101,21 @@ impl AudioGraph {
         &mut self.mixes
     }
 
+    /// Returns all cells of the row-major `channels × mixes` routing matrix.
+    pub fn routes(&self) -> &[ChannelMix] {
+        &self.ch_mix_matrix
+    }
+
+    /// Returns the row index of `channel`, if present.
+    pub fn channel_index(&self, channel: &ChannelName) -> Option<usize> {
+        self.channels.iter().position(|c| c.name == *channel)
+    }
+
+    /// Returns the column index of `mix`, if present.
+    pub fn mix_index(&self, mix: &MixName) -> Option<usize> {
+        self.mixes.iter().position(|m| m.name == *mix)
+    }
+
     /// Adds a new channel and appends its routing row across all existing mixes.
     ///
     /// # Errors
@@ -112,7 +138,7 @@ impl AudioGraph {
 
     /// Removes the channel with the given name and its matrix row, if present.
     pub fn remove_channel(&mut self, channel: &ChannelName) -> Option<Channel> {
-        let idx = self.channels.iter().position(|c| c.name == *channel)?;
+        let idx = self.channel_index(channel)?;
         self.remove_channel_idx(idx)
     }
 
@@ -159,7 +185,7 @@ impl AudioGraph {
 
     /// Removes the mix with the given name and its matrix column, if present.
     pub fn remove_mix(&mut self, mix: &MixName) -> Option<Mix> {
-        let idx = self.mixes.iter().position(|c| c.name == *mix)?;
+        let idx = self.mix_index(mix)?;
         self.remove_mix_idx(idx)
     }
 
@@ -190,8 +216,8 @@ impl AudioGraph {
 
     /// Returns a shared reference to the routing cell for `(channel, mix)`.
     pub fn get_route(&self, channel: &ChannelName, mix: &MixName) -> Option<&ChannelMix> {
-        let channel_idx = self.channels.iter().position(|c| c.name == *channel)?;
-        let mix_idx = self.mixes.iter().position(|c| c.name == *mix)?;
+        let channel_idx = self.channel_index(channel)?;
+        let mix_idx = self.mix_index(mix)?;
 
         let idx = self.matrix_index(channel_idx, mix_idx)?;
         self.ch_mix_matrix.get(idx)
@@ -203,8 +229,8 @@ impl AudioGraph {
         channel: &ChannelName,
         mix: &MixName,
     ) -> Option<&mut ChannelMix> {
-        let channel_idx = self.channels.iter().position(|c| c.name == *channel)?;
-        let mix_idx = self.mixes.iter().position(|c| c.name == *mix)?;
+        let channel_idx = self.channel_index(channel)?;
+        let mix_idx = self.mix_index(mix)?;
 
         let idx = self.matrix_index(channel_idx, mix_idx)?;
         self.ch_mix_matrix.get_mut(idx)
