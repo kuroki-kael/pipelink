@@ -7,25 +7,65 @@
 
 use pipelink_common::{
     events::StateEvent,
-    graph::{app_node::AppNode, node::Node},
+    graph::{
+        app_node::AppNode,
+        link::{LinkEndpoint, StereoLink},
+        node::Node,
+    },
     types::{
-        ChannelName, ChannelPosition, GlobalId, MixName, NodeId, NodeName, NodeSerial, Pid,
+        ChannelName, ChannelPosition, GlobalId, LinkId, MixName, NodeId, NodeName, NodeSerial, Pid,
         PortDirection, PortId,
     },
 };
+use pipelink_pw::Command as PipewireCommand;
 use pipelink_resolver::is_process_alive;
 use tracing::{info, warn};
 
 use crate::executor::Executor;
 
+#[derive(Debug, PartialEq, Eq)]
+enum JackPortKind<'a> {
+    ChannelInput {
+        channel: &'a str,
+        pos: ChannelPosition,
+    },
+    MixOutput {
+        mix: &'a str,
+        pos: ChannelPosition,
+    },
+}
+
+fn parse_jack_port_name(name: &str) -> Option<JackPortKind<'_>> {
+    let (pos, stem) = if let Some(s) = name.strip_suffix("_FL") {
+        (ChannelPosition::FrontLeft, s)
+    } else {
+        (ChannelPosition::FrontRight, name.strip_suffix("_FR")?)
+    };
+
+    if let Some(channel) = stem.strip_prefix("in_") {
+        (!channel.is_empty()).then_some(JackPortKind::ChannelInput { channel, pos })
+    } else if let Some(mix) = stem.strip_prefix("out_") {
+        (!mix.is_empty()).then_some(JackPortKind::MixOutput { mix, pos })
+    } else {
+        None
+    }
+}
+
 impl Executor {
-    /// Registers a newly appeared node on the channel or mix it belongs to.
+    /// Registers a newly appeared node on the channel, mix, or `JACK` client it belongs to.
     pub(super) fn on_node_appeared(
         &mut self,
         id: NodeId,
         name: &NodeName,
         serial: Option<NodeSerial>,
     ) {
+        if name == self.jack.client_name() {
+            self.graph.jack_node_id = Some(id);
+            info!("JACK client '{name}' has the id {id}");
+            self.try_link_pending(id);
+            return;
+        }
+
         if let Some(channel_name) = name.strip_prefix("pipelink.channel.") {
             if let Some(ch) = self
                 .graph
@@ -66,58 +106,177 @@ impl Executor {
         }
     }
 
-    /// Registers a newly appeared port on the channel or mix it belongs to.
+    /// Registers a newly appeared port on the channel, mix, or `PipeLink` `JACK` node,
+    /// and requests stereo `PipeWire` links once both sides' ports are known.
     pub(super) fn on_port_appeared(
         &mut self,
         id: PortId,
         node_id: NodeId,
+        name: Option<&str>,
         direction: PortDirection,
         position: ChannelPosition,
     ) {
+        if self.graph.jack_node_id == Some(node_id) {
+            if let Some(port_name) = name {
+                self.on_jack_port_appeared(id, port_name);
+            }
+            return;
+        }
+
+        let jack_node_id = self.graph.jack_node_id;
+
         if let Some(ch) = self
             .graph
             .channels_mut()
             .iter_mut()
             .find(|c| c.node.id == Some(node_id))
-            && ch.node.on_port_appeared(id, node_id, direction, position)
-            && ch.is_ready()
         {
-            info!("Channel '{}' is ready", ch.name);
-            // The graph entry is optimistic, the ChannelAdded event is sent once
-            // PipeWire has registered all ports of the sink.
-            let _ = self.state_tx.send(StateEvent::ChannelAdded {
-                channel: ch.name.clone(),
-            });
+            if ch.node.on_port_appeared(id, node_id, direction, position)
+                && let Some(jack_id) = jack_node_id
+                && let Some(stereo_link) = ch.prepare_links(jack_id)
+            {
+                self.dispatch_create_link(stereo_link);
+            }
+            return;
         }
 
         if let Some(m) = self
             .graph
             .mixes_mut()
             .iter_mut()
-            .find(|m| m.sink.id == Some(node_id))
-            && m.sink.on_port_appeared(id, node_id, direction, position)
-            && m.is_ready()
+            .find(|m| m.sink.id == Some(node_id) || m.source.id == Some(node_id))
         {
-            info!("Mix '{}' is ready", m.name);
-            // The graph entry is optimistic, the ChannelAdded event is sent once
-            // PipeWire has registered all ports of the sink.
-            let _ = self.state_tx.send(StateEvent::MixAdded {
-                mix: m.name.clone(),
-            });
-        } else if let Some(m) = self
-            .graph
-            .mixes_mut()
-            .iter_mut()
-            .find(|m| m.source.id == Some(node_id))
-            && m.source.on_port_appeared(id, node_id, direction, position)
-            && m.is_ready()
+            let updated = m.sink.on_port_appeared(id, node_id, direction, position)
+                || m.source.on_port_appeared(id, node_id, direction, position);
+            if updated
+                && let Some(jack_id) = jack_node_id
+                && let Some(stereo_link) = m.prepare_links(jack_id)
+            {
+                self.dispatch_create_link(stereo_link);
+            }
+        }
+    }
+
+    /// Matches a `PipeWire` port belonging to the `PipeLink` `JACK` client by `port.name`
+    /// onto its owning [`Channel`](pipelink_common::graph::channel::Channel) or
+    /// [`Mix`](pipelink_common::graph::mix::Mix).
+    fn on_jack_port_appeared(&mut self, port_id: PortId, port_name: &str) {
+        let Some(jack_id) = self.graph.jack_node_id else {
+            return;
+        };
+
+        match parse_jack_port_name(port_name) {
+            Some(JackPortKind::ChannelInput { channel, pos }) => {
+                if let Some(ch) = self
+                    .graph
+                    .channels_mut()
+                    .iter_mut()
+                    .find(|c| c.name == channel)
+                    && ch.jack_ports.set_port(pos, port_id)
+                    && let Some(stereo_link) = ch.prepare_links(jack_id)
+                {
+                    self.dispatch_create_link(stereo_link);
+                }
+            },
+            Some(JackPortKind::MixOutput { mix, pos }) => {
+                if let Some(m) = self.graph.mixes_mut().iter_mut().find(|m| m.name == mix)
+                    && m.jack_ports.set_port(pos, port_id)
+                    && let Some(stereo_link) = m.prepare_links(jack_id)
+                {
+                    self.dispatch_create_link(stereo_link);
+                }
+            },
+            None => {},
+        }
+    }
+
+    /// Records a newly appeared `PipeWire` link on its channel or mix and emits
+    /// `ChannelAdded` / `MixAdded` once both stereo links are confirmed.
+    pub(super) fn on_link_appeared(
+        &mut self,
+        id: LinkId,
+        out_node: NodeId,
+        in_node: NodeId,
+        out_port: PortId,
+        in_port: PortId,
+    ) {
+        let out_ep = LinkEndpoint {
+            node_id: out_node,
+            port_id: out_port,
+        };
+        let in_ep = LinkEndpoint {
+            node_id: in_node,
+            port_id: in_port,
+        };
+
+        for ch in self.graph.channels_mut() {
+            if ch.links.match_appeared(id, out_ep, in_ep) {
+                if !ch.added_emitted && ch.is_ready() {
+                    ch.added_emitted = true;
+                    info!("Channel '{}' is ready", ch.name);
+                    // The graph entry is optimistic, the ChannelAdded event is sent once
+                    // PipeWire has registered all ports and stereo links to JACK.
+                    let _ = self.state_tx.send(StateEvent::ChannelAdded {
+                        channel: ch.name.clone(),
+                    });
+                }
+                return;
+            }
+        }
+
+        for m in self.graph.mixes_mut() {
+            if m.links.match_appeared(id, out_ep, in_ep) {
+                if !m.added_emitted && m.is_ready() {
+                    m.added_emitted = true;
+                    info!("Mix '{}' is ready", m.name);
+                    // The graph entry is optimistic, the MixAdded event is sent once
+                    // PipeWire has registered all ports and stereo links from JACK.
+                    let _ = self.state_tx.send(StateEvent::MixAdded {
+                        mix: m.name.clone(),
+                    });
+                }
+                return;
+            }
+        }
+    }
+
+    /// Clears a disappeared link ID from whichever channel or mix owned it.
+    pub(super) fn on_link_removed(&mut self, id: LinkId) {
+        for ch in self.graph.channels_mut() {
+            if ch.links.clear_link_id(id) {
+                return;
+            }
+        }
+        for m in self.graph.mixes_mut() {
+            if m.links.clear_link_id(id) {
+                return;
+            }
+        }
+    }
+
+    fn try_link_pending(&mut self, jack_node_id: NodeId) {
+        let mut pending = Vec::new();
+        for ch in self.graph.channels_mut() {
+            if let Some(stereo_link) = ch.prepare_links(jack_node_id) {
+                pending.push(stereo_link);
+            }
+        }
+        for m in self.graph.mixes_mut() {
+            if let Some(stereo_link) = m.prepare_links(jack_node_id) {
+                pending.push(stereo_link);
+            }
+        }
+        for stereo_link in pending {
+            self.dispatch_create_link(stereo_link);
+        }
+    }
+
+    fn dispatch_create_link(&self, stereo_link: StereoLink) {
+        if let Err(err) = self
+            .pw_tx
+            .send(PipewireCommand::CreateLink { stereo_link })
         {
-            info!("Mix '{}' is ready", m.name);
-            // The graph entry is optimistic, the ChannelAdded event is sent once
-            // PipeWire has registered all ports of the sink.
-            let _ = self.state_tx.send(StateEvent::MixAdded {
-                mix: m.name.clone(),
-            });
+            warn!("Failed to send CreateLink command to PipeWire: {err:?}");
         }
     }
 
@@ -166,7 +325,13 @@ impl Executor {
     /// The entry is taken out of the graph here and not when the removal was
     /// requested, because only the vanished node confirms the removal.
     pub(super) fn on_global_removed(&mut self, id: GlobalId) {
+        let link_id = LinkId::from(id.0);
         let id = NodeId::from(id);
+
+        if self.graph.jack_node_id == Some(id) {
+            self.graph.jack_node_id = None;
+            return;
+        }
 
         if let Some(Some(channel)) = self
             .graph
@@ -204,6 +369,8 @@ impl Executor {
                 info!("Process {pid} exited, evicted from resolver cache");
             }
         }
+
+        self.on_link_removed(link_id);
     }
 
     /// Reports a node that could not be destroyed.
@@ -279,5 +446,47 @@ impl Executor {
             mix: name,
             error: reason.to_string(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_jack_port_name_channels_and_mixes() {
+        assert_eq!(
+            parse_jack_port_name("in_Game_FL"),
+            Some(JackPortKind::ChannelInput {
+                channel: "Game",
+                pos: ChannelPosition::FrontLeft,
+            })
+        );
+        assert_eq!(
+            parse_jack_port_name("in_game_audio_FR"),
+            Some(JackPortKind::ChannelInput {
+                channel: "game_audio",
+                pos: ChannelPosition::FrontRight,
+            })
+        );
+        assert_eq!(
+            parse_jack_port_name("out_Main_FL"),
+            Some(JackPortKind::MixOutput {
+                mix: "Main",
+                pos: ChannelPosition::FrontLeft,
+            })
+        );
+        assert_eq!(
+            parse_jack_port_name("out_stream_mix_FR"),
+            Some(JackPortKind::MixOutput {
+                mix: "stream_mix",
+                pos: ChannelPosition::FrontRight,
+            })
+        );
+
+        assert_eq!(parse_jack_port_name("in__FL"), None);
+        assert_eq!(parse_jack_port_name("out__FR"), None);
+        assert_eq!(parse_jack_port_name("in_Game_MONO"), None);
+        assert_eq!(parse_jack_port_name("playback_FL"), None);
     }
 }

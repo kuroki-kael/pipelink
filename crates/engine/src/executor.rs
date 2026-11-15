@@ -151,10 +151,23 @@ impl Executor {
             PipewireEvent::PortAppeared {
                 id,
                 node_id,
+                name,
                 direction,
                 channel,
             } => {
-                self.on_port_appeared(id, node_id, direction, channel);
+                self.on_port_appeared(id, node_id, name.as_deref(), direction, channel);
+            },
+            PipewireEvent::LinkAppeared {
+                id,
+                out_node,
+                in_node,
+                out_port,
+                in_port,
+            } => {
+                self.on_link_appeared(id, out_node, in_node, out_port, in_port);
+            },
+            PipewireEvent::LinkRemoved { id } => {
+                self.on_link_removed(id);
             },
             PipewireEvent::NodeInfo {
                 id, node_name, pid, ..
