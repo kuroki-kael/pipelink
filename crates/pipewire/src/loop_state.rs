@@ -80,13 +80,14 @@ impl LoopState {
                     });
                 }
             },
-            Command::SetAppRoute { app, channel } => {
+            Command::SetAppRoute {
+                node_id,
+                target_serial,
+                label,
+            } => {
                 // set target.object to target channel serial on the stream node
-                if let Some(channel_serial) = channel.node.serial
-                    && let Some(node_id) = app.node.id
-                    && let Some(metadata) = self.default_metadata.borrow().as_ref()
-                {
-                    let serial_str = channel_serial.to_string();
+                if let Some(metadata) = self.default_metadata.borrow().as_ref() {
+                    let serial_str = target_serial.to_string();
                     metadata.set_property(
                         node_id.0,
                         "target.object",
@@ -96,7 +97,7 @@ impl LoopState {
                     let _ = core.sync(0);
                     debug!(
                         "target.object set to {} for {} (node {})",
-                        serial_str, app.app.app_name, node_id
+                        serial_str, label, node_id
                     );
                 }
             },

@@ -14,8 +14,8 @@ pub use error::PipewireError;
 pub use events::PipewireEvent;
 pub(crate) use loop_state::LoopState;
 use pipelink_common::{
-    graph::{app_node::AppNode, channel::Channel, link::StereoLink, mix::Mix},
-    types::{ChannelName, LinkId, MixName, NodeId},
+    graph::{channel::Channel, link::StereoLink, mix::Mix},
+    types::{ChannelName, LinkId, MixName, NodeId, NodeSerial},
 };
 pub use pw_loop::PipewireService;
 
@@ -32,10 +32,12 @@ pub enum Command {
 
     /// sets `target.object` metadata
     SetAppRoute {
-        /// App to route
-        app: AppNode,
-        /// Destination channel
-        channel: Channel,
+        /// Stream node ID to route
+        node_id: NodeId,
+        /// Serial of the destination channel node
+        target_serial: NodeSerial,
+        /// Application label for logging
+        label: String,
     },
 
     SetMixRoute {
