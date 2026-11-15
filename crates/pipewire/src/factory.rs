@@ -4,10 +4,33 @@
  */
 use std::ffi::CString;
 
-use pipelink_common::types::{ChannelName, MixName};
-use pipewire::{context::Context, core::Core, node::Node, properties::properties};
+use pipelink_common::{
+    graph::link::Link,
+    types::{ChannelName, MixName},
+};
+use pipewire::{
+    context::Context, core::Core, link::Link as PwLink, node::Node, properties::properties,
+};
 
 use crate::{error::PipewireError, module_handle::ModuleHandle};
+
+pub(crate) fn create_link(core: &Core, link: Link) -> Result<PwLink, PipewireError> {
+    let out_node = link.out_port.node_id.0.to_string();
+    let out_port = link.out_port.port_id.0.to_string();
+    let in_node = link.in_port.node_id.0.to_string();
+    let in_port = link.in_port.port_id.0.to_string();
+
+    let props = properties!(
+        *pipewire::keys::LINK_OUTPUT_NODE => out_node,
+        *pipewire::keys::LINK_OUTPUT_PORT => out_port,
+        *pipewire::keys::LINK_INPUT_NODE => in_node,
+        *pipewire::keys::LINK_INPUT_PORT => in_port,
+        *pipewire::keys::OBJECT_LINGER => "true",
+    );
+
+    core.create_object::<PwLink>("link-factory", &props)
+        .map_err(Into::into)
+}
 
 pub(crate) fn create_null_sink(core: &Core, name: &ChannelName) -> Result<Node, PipewireError> {
     let props = properties!(

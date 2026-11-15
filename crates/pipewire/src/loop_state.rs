@@ -4,9 +4,13 @@
  */
 use std::{any::Any, cell::RefCell, collections::HashMap};
 
-use pipelink_common::types::{
-    ChannelName, ChannelPosition, GlobalId, MediaClass, MixName, NodeId, NodeName, NodeSerial, Pid,
-    PortDirection, PortId,
+use pipelink_common::{
+    JACK_CLIENT_NAME,
+    graph::link::StereoLink,
+    types::{
+        ChannelName, ChannelPosition, GlobalId, LinkId, MediaClass, MixName, NodeId, NodeName,
+        NodeSerial, Pid, PortDirection, PortId,
+    },
 };
 use pipewire::{
     context::Context,
@@ -129,11 +133,31 @@ impl LoopState {
                     });
                 }
             },
-            Command::CreateLink { .. }
-            | Command::DestroyLink { .. }
-            | Command::SetMixRoute { .. }
-            | Command::LoadInput { .. } => {},
+            Command::CreateLink { stereo_link } => Self::create_stereo_link(core, stereo_link),
+            Command::DestroyLink { link_id } => {
+                if let Err(e) = registry.destroy_global(link_id.0).into_result() {
+                    error!("Failed to destroy link {link_id}: {e}");
+                } else {
+                    let _ = core.sync(0);
+                }
+            },
+            Command::SetMixRoute { .. } | Command::LoadInput { .. } => {},
         }
+    }
+
+    fn create_stereo_link(core: &Core, stereo_link: StereoLink) {
+        for half in [stereo_link.fl, stereo_link.fr] {
+            if let Err(e) = factory::create_link(core, half) {
+                error!(
+                    "Failed to create link {}:{} -> {}:{}: {e:?}",
+                    half.out_port.node_id,
+                    half.out_port.port_id,
+                    half.in_port.node_id,
+                    half.in_port.port_id
+                );
+            }
+        }
+        let _ = core.sync(0);
     }
 
     /// Destroys the sink of a channel and reports why that did not work.
@@ -183,79 +207,9 @@ impl LoopState {
         let Some(dict) = &obj.props else { return };
 
         match obj.type_ {
-            ObjectType::Node => {
-                let media_class =
-                    MediaClass::from_pw_str(dict.get("media.class").unwrap_or_default());
-                let id = NodeId::from(obj.id);
-                let serial = dict
-                    .get("object.serial")
-                    .and_then(|s| s.parse().ok())
-                    .map(NodeSerial);
-                let pid = dict
-                    .get("application.process.id")
-                    .and_then(|p| p.parse().ok())
-                    .map(Pid);
-
-                let is_pipelink_node = dict
-                    .get("node.name")
-                    .is_some_and(|n| n.starts_with("pipelink."));
-
-                if let Some(name) = dict.get("node.name") {
-                    let _ = event_tx.blocking_send(PipewireEvent::NodeAppeared {
-                        id,
-                        name: NodeName::from(name),
-                        media_class: media_class.clone(),
-                        app: None,
-                        pid,
-                        serial,
-                        nick: dict.get("node.nick").map(ToString::to_string),
-                    });
-                }
-
-                if !is_pipelink_node
-                    && media_class.is_stream_output()
-                    && let Ok(node_proxy) = registry.bind::<Node, _>(obj)
-                {
-                    let tx = event_tx.clone();
-
-                    let listener = node_proxy
-                        .add_listener_local()
-                        .info(move |info| {
-                            if let Some(props) = info.props() {
-                                let _ = tx.blocking_send(PipewireEvent::NodeInfo {
-                                    id,
-                                    node_name: props.get("node.name").map(NodeName::from),
-                                    app: props.get("application.name").map(ToString::to_string),
-                                    pid: props
-                                        .get("application.process.id")
-                                        .and_then(|p| p.parse().ok())
-                                        .map(Pid),
-                                    nick: props.get("node.nick").map(ToString::to_string),
-                                });
-                            }
-                        })
-                        .register();
-
-                    self.stream_listeners
-                        .borrow_mut()
-                        .insert(id, (node_proxy, Box::new(listener)));
-                }
-            },
-            ObjectType::Port => {
-                if let (Some(node_id_str), Some(direction), Some(channel)) = (
-                    dict.get("node.id"),
-                    dict.get("port.direction"),
-                    dict.get("audio.channel"),
-                ) && let Ok(node_id) = node_id_str.parse::<NodeId>()
-                {
-                    let _ = event_tx.blocking_send(PipewireEvent::PortAppeared {
-                        id: PortId::from(obj.id),
-                        node_id,
-                        direction: PortDirection::from_pw_str(direction),
-                        channel: ChannelPosition::from_pw_str(channel),
-                    });
-                }
-            },
+            ObjectType::Node => self.handle_node_appeared(obj, dict, event_tx, registry),
+            ObjectType::Port => Self::handle_port_appeared(obj.id, dict, event_tx),
+            ObjectType::Link => Self::handle_link_appeared(obj.id, dict, event_tx),
             ObjectType::Metadata => {
                 let is_default = dict.get("metadata.name") == Some("default");
                 if is_default {
@@ -274,6 +228,109 @@ impl LoopState {
                 }
             },
             _ => {},
+        }
+    }
+
+    fn handle_node_appeared(
+        &self,
+        obj: &GlobalObject<&DictRef>,
+        dict: &DictRef,
+        event_tx: &Sender<PipewireEvent>,
+        registry: &RegistryRc,
+    ) {
+        let media_class = MediaClass::from_pw_str(dict.get("media.class").unwrap_or_default());
+        let id = NodeId::from(obj.id);
+        let serial = dict
+            .get("object.serial")
+            .and_then(|s| s.parse().ok())
+            .map(NodeSerial);
+        let pid = dict
+            .get("application.process.id")
+            .and_then(|p| p.parse().ok())
+            .map(Pid);
+
+        let is_pipelink_node = dict
+            .get("node.name")
+            .is_some_and(|n| n.starts_with("pipelink.") || n == JACK_CLIENT_NAME);
+
+        if let Some(name) = dict.get("node.name") {
+            let _ = event_tx.blocking_send(PipewireEvent::NodeAppeared {
+                id,
+                name: NodeName::from(name),
+                media_class: media_class.clone(),
+                app: None,
+                pid,
+                serial,
+                nick: dict.get("node.nick").map(ToString::to_string),
+            });
+        }
+
+        if !is_pipelink_node
+            && media_class.is_stream_output()
+            && let Ok(node_proxy) = registry.bind::<Node, _>(obj)
+        {
+            let tx = event_tx.clone();
+
+            let listener = node_proxy
+                .add_listener_local()
+                .info(move |info| {
+                    if let Some(props) = info.props() {
+                        let _ = tx.blocking_send(PipewireEvent::NodeInfo {
+                            id,
+                            node_name: props.get("node.name").map(NodeName::from),
+                            app: props.get("application.name").map(ToString::to_string),
+                            pid: props
+                                .get("application.process.id")
+                                .and_then(|p| p.parse().ok())
+                                .map(Pid),
+                            nick: props.get("node.nick").map(ToString::to_string),
+                        });
+                    }
+                })
+                .register();
+
+            self.stream_listeners
+                .borrow_mut()
+                .insert(id, (node_proxy, Box::new(listener)));
+        }
+    }
+
+    fn handle_port_appeared(obj_id: u32, dict: &DictRef, event_tx: &Sender<PipewireEvent>) {
+        if let (Some(node_id_str), Some(direction)) =
+            (dict.get("node.id"), dict.get("port.direction"))
+            && let Ok(node_id) = node_id_str.parse::<NodeId>()
+        {
+            let channel = dict
+                .get("audio.channel")
+                .map_or(ChannelPosition::Other, ChannelPosition::from_pw_str);
+            let _ = event_tx.blocking_send(PipewireEvent::PortAppeared {
+                id: PortId::from(obj_id),
+                node_id,
+                name: dict.get("port.name").map(ToString::to_string),
+                direction: PortDirection::from_pw_str(direction),
+                channel,
+            });
+        }
+    }
+
+    fn handle_link_appeared(obj_id: u32, dict: &DictRef, event_tx: &Sender<PipewireEvent>) {
+        if let (Some(out_node), Some(in_node), Some(out_port), Some(in_port)) = (
+            dict.get("link.output.node")
+                .and_then(|s| s.parse::<NodeId>().ok()),
+            dict.get("link.input.node")
+                .and_then(|s| s.parse::<NodeId>().ok()),
+            dict.get("link.output.port")
+                .and_then(|s| s.parse::<PortId>().ok()),
+            dict.get("link.input.port")
+                .and_then(|s| s.parse::<PortId>().ok()),
+        ) {
+            let _ = event_tx.blocking_send(PipewireEvent::LinkAppeared {
+                id: LinkId::from(obj_id),
+                out_node,
+                in_node,
+                out_port,
+                in_port,
+            });
         }
     }
 

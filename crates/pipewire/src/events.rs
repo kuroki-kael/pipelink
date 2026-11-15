@@ -61,6 +61,8 @@ pub enum PipewireEvent {
         id: PortId,
         /// parent node id
         node_id: NodeId,
+        /// Optional `port.name` (used to identify `JACK` ports on the `PipeLink` client)
+        name: Option<String>,
         /// Input or Output
         direction: PortDirection,
         /// e.g. "FL", "FR", "MONO", etc.

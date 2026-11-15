@@ -14,13 +14,8 @@ pub use error::PipewireError;
 pub use events::PipewireEvent;
 pub(crate) use loop_state::LoopState;
 use pipelink_common::{
-    graph::{
-        app_node::AppNode,
-        channel::Channel,
-        link::{Link, StereoLink},
-        mix::Mix,
-    },
-    types::{ChannelName, MixName, NodeId},
+    graph::{app_node::AppNode, channel::Channel, link::StereoLink, mix::Mix},
+    types::{ChannelName, LinkId, MixName, NodeId},
 };
 pub use pw_loop::PipewireService;
 
@@ -32,7 +27,7 @@ pub enum Command {
     },
 
     DestroyLink {
-        link: Link,
+        link_id: LinkId,
     },
 
     /// sets `target.object` metadata
