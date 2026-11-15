@@ -14,5 +14,10 @@ pipelink-common = { workspace = true }
 # Audio
 jack = { workspace = true }
 
+# Util
+thiserror = { workspace = true }
+rtrb = { workspace = true }
+tracing = { workspace = true }
+
 [lints]
 workspace = true
