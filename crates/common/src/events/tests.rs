@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::{ControlEvent, ControlReply, StateEvent};
+use super::{ActiveAppInfo, ControlEvent, ControlReply, StateEvent};
 use crate::types::{AppDisplay, ChannelName, MixName};
 
 #[test]
@@ -171,4 +171,38 @@ fn test_control_reply_round_trip() {
     let parsed: ControlReply = serde_json::from_str(&json).unwrap();
 
     assert_eq!(parsed, reply);
+}
+
+#[test]
+fn test_app_routing_events_and_replies_round_trip() {
+    let route = ControlEvent::RouteApp {
+        app: AppDisplay::from("Discord"),
+        channel: ChannelName::from("Chat"),
+    };
+    let json = serde_json::to_string(&route).unwrap();
+    assert_eq!(serde_json::from_str::<ControlEvent>(&json).unwrap(), route);
+
+    let apps_reply = ControlReply::Apps {
+        apps: vec![ActiveAppInfo {
+            display_name: AppDisplay::from("Discord"),
+            app_name: "discord".to_string(),
+            channel: Some(ChannelName::from("Chat")),
+            stream_count: 2,
+        }],
+    };
+    let reply_json = serde_json::to_string(&apps_reply).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ControlReply>(&reply_json).unwrap(),
+        apps_reply
+    );
+
+    let state = StateEvent::AppRouted {
+        app: AppDisplay::from("Discord"),
+        channel: ChannelName::from("Chat"),
+    };
+    let state_json = serde_json::to_string(&state).unwrap();
+    assert_eq!(
+        serde_json::from_str::<StateEvent>(&state_json).unwrap(),
+        state
+    );
 }

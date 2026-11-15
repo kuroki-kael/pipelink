@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{ChannelName, MixName};
+use crate::types::{AppDisplay, ChannelName, MixName};
 
 /// Events broadcast by the audio engine to notify listeners of state changes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -113,6 +113,25 @@ pub enum StateEvent {
         /// Affected mix name.
         mix: MixName,
         /// Reason the update failed.
+        error: String,
+    },
+    /// Application routed to a channel.
+    AppRouted {
+        /// Application display name.
+        app: AppDisplay,
+        /// Destination channel name.
+        channel: ChannelName,
+    },
+    /// Application routing rule removed.
+    AppUnrouted {
+        /// Application display name.
+        app: AppDisplay,
+    },
+    /// Application routing update failed.
+    AppRoutingFailed {
+        /// Application display name.
+        app: AppDisplay,
+        /// Reason the routing operation failed.
         error: String,
     },
 }

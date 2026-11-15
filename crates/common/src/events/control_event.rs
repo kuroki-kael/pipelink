@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{ChannelName, MixName};
+use crate::types::{AppDisplay, ChannelName, MixName};
 
 /// Events sent from controllers (IPC, CLI, GUI, MIDI, Web) to request state changes and
 /// queries.
@@ -77,10 +77,24 @@ pub enum ControlEvent {
         /// Target mix name.
         mix: MixName,
     },
+    /// Routes an application (by display name) into a channel.
+    RouteApp {
+        /// Application display name.
+        app: AppDisplay,
+        /// Destination channel name.
+        channel: ChannelName,
+    },
+    /// Removes the channel routing rule for an application.
+    UnrouteApp {
+        /// Application display name.
+        app: AppDisplay,
+    },
     /// Requests the names of all channels.
     ListChannels,
     /// Requests the names of all mixes.
     ListMixes,
+    /// Requests currently active resolved applications and their assigned channel.
+    ListApps,
     /// Requests the apps and the channel each one is routed to.
     ListAppChannels,
     /// Requests the mixes and the channels routed to each.
