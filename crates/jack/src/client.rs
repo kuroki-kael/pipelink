@@ -5,7 +5,9 @@
 
 //! Control-thread handle managing the active JACK client and port lifecycle.
 
-use jack::{AsyncClient, Client, ClientOptions, ClientStatus, Control, Frames, NotificationHandler, PortId};
+use jack::{
+    AsyncClient, Client, ClientOptions, ClientStatus, Control, Frames, NotificationHandler, PortId,
+};
 use pipelink_common::{
     JACK_CLIENT_NAME,
     types::{ChannelName, MixName},
@@ -91,18 +93,15 @@ impl JackClient {
         }
     }
 
-    /// Registers stereo input ports for a new channel and installs the updated gains matrix.
+    /// Registers stereo input ports for a new channel and installs the updated gains
+    /// matrix.
     ///
     /// # Errors
     /// Returns [`JackError::ChannelExists`] if `name` is already registered,
     /// [`JackError::Jack`] if port registration fails, [`JackError::ChannelClosed`]
     /// if the audio thread stopped, or [`JackError::ChannelFull`] if the command
     /// ringbuffer is full.
-    pub fn create_channel(
-        &mut self,
-        name: &ChannelName,
-        gains: Vec<f32>,
-    ) -> Result<(), JackError> {
+    pub fn create_channel(&mut self, name: &ChannelName, gains: Vec<f32>) -> Result<(), JackError> {
         self.reclaim();
 
         if self.channel_names.iter().any(|c| c == name) {
@@ -120,17 +119,14 @@ impl JackClient {
         Ok(())
     }
 
-    /// Removes the channel `name` from the audio thread, installs `gains`, and schedules port cleanup.
+    /// Removes the channel `name` from the audio thread, installs `gains`, and schedules
+    /// port cleanup.
     ///
     /// # Errors
     /// Returns [`JackError::ChannelNotFound`] if `name` is not registered,
     /// [`JackError::ChannelClosed`] if the audio thread stopped, or
     /// [`JackError::ChannelFull`] if the command ringbuffer is full.
-    pub fn remove_channel(
-        &mut self,
-        name: &ChannelName,
-        gains: Vec<f32>,
-    ) -> Result<(), JackError> {
+    pub fn remove_channel(&mut self, name: &ChannelName, gains: Vec<f32>) -> Result<(), JackError> {
         self.reclaim();
 
         let idx = self
@@ -170,7 +166,8 @@ impl JackClient {
         Ok(())
     }
 
-    /// Removes the mix `name` from the audio thread, installs `gains`, and schedules port cleanup.
+    /// Removes the mix `name` from the audio thread, installs `gains`, and schedules port
+    /// cleanup.
     ///
     /// # Errors
     /// Returns [`JackError::MixNotFound`] if `name` is not registered,
@@ -191,7 +188,8 @@ impl JackClient {
         Ok(())
     }
 
-    /// Pushes a pre-built row-major (`channels × mixes`) gains matrix to the audio thread.
+    /// Pushes a pre-built row-major (`channels × mixes`) gains matrix to the audio
+    /// thread.
     ///
     /// # Errors
     /// Returns [`JackError::ChannelClosed`] if the audio thread stopped or

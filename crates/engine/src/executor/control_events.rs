@@ -45,13 +45,12 @@ impl Executor {
             return Ok(());
         }
 
-        if let Err(err) = self.pw_tx.send(PipewireCommand::CreateChannel {
-            name: name.clone(),
-        }) {
+        if let Err(err) = self
+            .pw_tx
+            .send(PipewireCommand::CreateChannel { name: name.clone() })
+        {
             self.graph.remove_channel(&name);
-            let _ = self
-                .jack
-                .remove_channel(&name, self.graph.gains_snapshot());
+            let _ = self.jack.remove_channel(&name, self.graph.gains_snapshot());
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
@@ -77,10 +76,7 @@ impl Executor {
 
         if channel.node.id.is_none() {
             self.graph.remove_channel(&name);
-            if let Err(err) = self
-                .jack
-                .remove_channel(&name, self.graph.gains_snapshot())
-            {
+            if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
                 warn!("Failed to remove JACK channel '{name}': {err}");
             }
             let _ = self
@@ -120,9 +116,10 @@ impl Executor {
             return Ok(());
         }
 
-        if let Err(err) = self.pw_tx.send(PipewireCommand::CreateMix {
-            name: name.clone(),
-        }) {
+        if let Err(err) = self
+            .pw_tx
+            .send(PipewireCommand::CreateMix { name: name.clone() })
+        {
             self.graph.remove_mix(&name);
             let _ = self.jack.remove_mix(&name, self.graph.gains_snapshot());
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
@@ -199,7 +196,8 @@ impl Executor {
         Ok(())
     }
 
-    /// Updates the gain (in percent) of `(channel, mix)` and pushes the linear gain to JACK.
+    /// Updates the gain (in percent) of `(channel, mix)` and pushes the linear gain to
+    /// JACK.
     pub(super) fn on_set_channel_gain(
         &mut self,
         channel: ChannelName,
@@ -305,7 +303,8 @@ fn normalize_percent(percent: f32) -> f32 {
     }
 }
 
-/// Converts a normalized percentage (`0.0` = silence, `100.0` = unity) to a linear multiplier.
+/// Converts a normalized percentage (`0.0` = silence, `100.0` = unity) to a linear
+/// multiplier.
 #[inline]
 fn percent_to_linear(percent: f32) -> f32 {
     normalize_percent(percent) / 100.0

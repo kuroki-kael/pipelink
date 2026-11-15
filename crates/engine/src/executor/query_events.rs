@@ -48,8 +48,9 @@ impl Executor {
                 None
             },
             // The remaining queries report on data models that do not exist yet.
-            // TODO: answer ListAppChannels once the graph knows which app is routed to which channel.
-            // TODO: answer GetActiveMix once a mix can be selected as active.
+            // TODO: answer ListAppChannels once the graph knows which app is routed to
+            // which channel. TODO: answer GetActiveMix once a mix can be selected as
+            // active.
             other => Some(other),
         }
     }

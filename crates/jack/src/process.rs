@@ -26,10 +26,7 @@ pub(crate) struct JackProcess {
 
 impl JackProcess {
     /// Creates a new process handler with pre-reserved channel and mix port storage.
-    pub(crate) fn new(
-        cmd_rx: Consumer<Command>,
-        retired_tx: Producer<RetiredResource>,
-    ) -> Self {
+    pub(crate) fn new(cmd_rx: Consumer<Command>, retired_tx: Producer<RetiredResource>) -> Self {
         Self {
             channels: Vec::with_capacity(INITIAL_PORT_CAPACITY),
             mixes: Vec::with_capacity(INITIAL_PORT_CAPACITY),

@@ -56,14 +56,15 @@ impl Mix {
             && self.source.has_port(Output, FrontRight)
     }
 
-    /// Returns whether this mix node, its `JACK` ports, and its `PipeWire` links are ready.
+    /// Returns whether this mix node, its `JACK` ports, and its `PipeWire` links are
+    /// ready.
     #[must_use]
     pub fn is_ready(&self) -> bool {
         self.are_pw_ports_ready() && self.jack_ports.is_complete() && self.links.is_ready()
     }
 
-    /// Builds the stereo [`StereoLink`] spec (`JACK -> mix.sink`) when all endpoints exist and
-    /// links have not yet been requested.
+    /// Builds the stereo [`StereoLink`] spec (`JACK -> mix.sink`) when all endpoints
+    /// exist and links have not yet been requested.
     pub fn prepare_links(&mut self, jack_node_id: NodeId) -> Option<StereoLink> {
         if self.links_requested || !self.are_pw_ports_ready() {
             return None;

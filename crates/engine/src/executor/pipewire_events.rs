@@ -25,7 +25,8 @@ use tracing::{info, warn};
 use crate::executor::Executor;
 
 impl Executor {
-    /// Registers a newly appeared node on the channel, mix, or `JACK` client it belongs to.
+    /// Registers a newly appeared node on the channel, mix, or `JACK` client it belongs
+    /// to.
     pub(super) fn on_node_appeared(
         &mut self,
         id: NodeId,
@@ -248,10 +249,7 @@ impl Executor {
     }
 
     fn dispatch_create_link(&self, stereo_link: StereoLink) {
-        if let Err(err) = self
-            .pw_tx
-            .send(PipewireCommand::CreateLink { stereo_link })
-        {
+        if let Err(err) = self.pw_tx.send(PipewireCommand::CreateLink { stereo_link }) {
             warn!("Failed to send CreateLink command to PipeWire: {err:?}");
         }
     }
@@ -387,10 +385,7 @@ impl Executor {
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
         self.graph.remove_channel(&name);
-        if let Err(err) = self
-            .jack
-            .remove_channel(&name, self.graph.gains_snapshot())
-        {
+        if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK channel '{name}': {err}");
         }
 

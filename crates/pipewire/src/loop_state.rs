@@ -295,7 +295,11 @@ impl LoopState {
         }
     }
 
-    fn handle_port_appeared(obj_id: u32, dict: &DictRef, event_tx: &UnboundedSender<PipewireEvent>) {
+    fn handle_port_appeared(
+        obj_id: u32,
+        dict: &DictRef,
+        event_tx: &UnboundedSender<PipewireEvent>,
+    ) {
         if let (Some(node_id_str), Some(direction)) =
             (dict.get("node.id"), dict.get("port.direction"))
             && let Ok(node_id) = node_id_str.parse::<NodeId>()
@@ -313,7 +317,11 @@ impl LoopState {
         }
     }
 
-    fn handle_link_appeared(obj_id: u32, dict: &DictRef, event_tx: &UnboundedSender<PipewireEvent>) {
+    fn handle_link_appeared(
+        obj_id: u32,
+        dict: &DictRef,
+        event_tx: &UnboundedSender<PipewireEvent>,
+    ) {
         if let (Some(out_node), Some(in_node), Some(out_port), Some(in_port)) = (
             dict.get("link.output.node")
                 .and_then(|s| s.parse::<NodeId>().ok()),

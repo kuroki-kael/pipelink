@@ -69,7 +69,8 @@ pub enum MixerPort {
 }
 
 impl MixerPort {
-    /// Returns the `JACK` / `PipeWire` `port.name`, e.g. `in_Music_FL` or `out_Stream_FR`.
+    /// Returns the `JACK` / `PipeWire` `port.name`, e.g. `in_Music_FL` or
+    /// `out_Stream_FR`.
     #[must_use]
     pub fn name(&self) -> String {
         let (prefix, owner, position) = match self {

@@ -36,7 +36,8 @@ impl Channel {
         }
     }
 
-    /// Returns whether this channel's own `PipeWire` node and stereo ports are registered.
+    /// Returns whether this channel's own `PipeWire` node and stereo ports are
+    /// registered.
     #[must_use]
     pub fn are_pw_ports_ready(&self) -> bool {
         use ChannelPosition::{FrontLeft, FrontRight};
@@ -52,14 +53,15 @@ impl Channel {
             && self.node.has_port(Output, FrontRight)
     }
 
-    /// Returns whether this channel node, its `JACK` ports, and its `PipeWire` links are ready.
+    /// Returns whether this channel node, its `JACK` ports, and its `PipeWire` links are
+    /// ready.
     #[must_use]
     pub fn is_ready(&self) -> bool {
         self.are_pw_ports_ready() && self.jack_ports.is_complete() && self.links.is_ready()
     }
 
-    /// Builds the stereo [`StereoLink`] spec (`channel -> JACK`) when all endpoints exist and
-    /// links have not yet been requested.
+    /// Builds the stereo [`StereoLink`] spec (`channel -> JACK`) when all endpoints exist
+    /// and links have not yet been requested.
     pub fn prepare_links(&mut self, jack_node_id: NodeId) -> Option<StereoLink> {
         if self.links_requested || !self.are_pw_ports_ready() {
             return None;
@@ -143,7 +145,8 @@ mod tests {
         assert!(!ch.is_ready());
         assert!(ch.prepare_links(jack_node).is_none());
 
-        ch.jack_ports.set_port(ChannelPosition::FrontLeft, PortId(50));
+        ch.jack_ports
+            .set_port(ChannelPosition::FrontLeft, PortId(50));
         ch.jack_ports
             .set_port(ChannelPosition::FrontRight, PortId(51));
 

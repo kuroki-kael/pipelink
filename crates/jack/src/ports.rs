@@ -33,7 +33,10 @@ impl ChannelInputPorts {
     /// # Errors
     ///
     /// Returns a [`jack::Error`] if registration failed.
-    pub fn register(client: &jack::Client, channel_name: &ChannelName) -> Result<Self, jack::Error> {
+    pub fn register(
+        client: &jack::Client,
+        channel_name: &ChannelName,
+    ) -> Result<Self, jack::Error> {
         let left_name = MixerPort::ChannelInput {
             channel: channel_name.clone(),
             position: ChannelPosition::FrontLeft,
