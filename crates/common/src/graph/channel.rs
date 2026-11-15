@@ -5,8 +5,9 @@
 
 use crate::{
     graph::{
-        link::{LinkEndpoint, StereoLink, StereoPortPair},
+        link::{LinkEndpoint, StereoLink},
         node::Node,
+        port::StereoPortPair,
     },
     types::{ChannelName, ChannelPosition, NodeId, PortDirection},
 };

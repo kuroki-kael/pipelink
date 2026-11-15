@@ -7,16 +7,10 @@
 
 use std::collections::HashMap;
 
-use crate::types::{ChannelPosition, NodeId, NodeName, NodeSerial, PortDirection, PortId};
-
-/// Direction and channel position of a single registered port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PortInfo {
-    /// Direction the port faces.
-    pub direction: PortDirection,
-    /// Channel position the port occupies within its node.
-    pub position: ChannelPosition,
-}
+use crate::{
+    graph::port::PortInfo,
+    types::{ChannelPosition, NodeId, NodeName, NodeSerial, PortDirection, PortId},
+};
 
 /// `PipeWire` node metadata and registered ports.
 #[derive(Debug, Clone, Default)]
