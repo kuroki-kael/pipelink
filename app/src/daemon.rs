@@ -23,7 +23,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut executor = Executor::new(ConfigGraph::default(), control_rx, state_tx)?;
 
-    let listener = start_server().await?;
+    let (listener, socket_guard) = start_server().await?;
 
     tokio::spawn(async move {
         loop {
@@ -52,5 +52,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     executor.run().await?;
+
+    // The socket of the daemon is gone when the daemon ends.
+    drop(socket_guard);
+
     Ok(())
 }

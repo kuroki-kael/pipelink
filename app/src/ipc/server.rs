@@ -5,7 +5,11 @@
 
 //! The daemon side of the control socket.
 
-use std::{fs, io, os::unix::fs::PermissionsExt};
+use std::{
+    env, fs, io,
+    os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+    path::{Path, PathBuf},
+};
 
 use pipelink_common::events::{ControlEvent, ControlReply, StateEvent};
 use pipelink_engine::executor::Envelope;
@@ -19,15 +23,21 @@ use tokio::{
     },
 };
 
-use super::socket_path;
+use super::{current_uid, socket_path};
 
 /// Binds the control socket the daemon listens on.
+///
+/// The socket lies in a directory that belongs to the user alone, so that no
+/// other user can reach it. A socket that belongs to another user is neither
+/// connected to nor removed.
 ///
 /// # Errors
 /// Returns an error if the socket path cannot be determined, if a daemon is
 /// already listening on it, or if the socket cannot be created.
-pub(crate) async fn start_server() -> io::Result<UnixListener> {
+pub(crate) async fn start_server() -> io::Result<(UnixListener, SocketGuard)> {
     let socket = socket_path()?;
+
+    prepare_socket_dir(&socket)?;
 
     match UnixStream::connect(&socket).await {
         Ok(_) => {
@@ -37,7 +47,8 @@ pub(crate) async fn start_server() -> io::Result<UnixListener> {
             ));
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-            fs::remove_file(&socket)?;
+            // The socket is the leftover of a daemon that is gone.
+            remove_own_socket(&socket)?;
         },
         Err(e) if e.kind() == io::ErrorKind::NotFound => {},
         Err(e) => return Err(e),
@@ -46,7 +57,87 @@ pub(crate) async fn start_server() -> io::Result<UnixListener> {
     let listener = UnixListener::bind(&socket)?;
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
 
-    Ok(listener)
+    Ok((listener, SocketGuard::new(socket)))
+}
+
+/// The socket of the daemon, removed when the daemon ends.
+#[derive(Debug)]
+pub(crate) struct SocketGuard {
+    path: PathBuf,
+}
+
+impl SocketGuard {
+    /// Takes the path of the socket that is removed when the guard is dropped.
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// Makes sure that the directory of the socket belongs to this user alone.
+///
+/// The directory is created when it is not there yet. A directory that belongs
+/// to another user is never used, because the socket in it could be reached by
+/// everybody.
+fn prepare_socket_dir(socket: &Path) -> io::Result<()> {
+    // A path that was set by hand is used as it is.
+    if env::var_os("PIPELINK_SOCKET").is_some() {
+        return Ok(());
+    }
+
+    let Some(dir) = socket.parent() else {
+        return Ok(());
+    };
+
+    match fs::DirBuilder::new().mode(0o700).create(dir) {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {},
+        Err(e) => return Err(e),
+    }
+
+    // The directory is there already. It has to belong to this user, or it is
+    // the directory of somebody else.
+    let metadata = fs::metadata(dir)?;
+    if metadata.uid() != current_uid()? {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "the directory of the socket belongs to another user: {}",
+                dir.display()
+            ),
+        ));
+    }
+
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+
+    Ok(())
+}
+
+/// Removes the socket of a daemon that is gone.
+///
+/// A socket that belongs to another user is never removed, because it is not
+/// the socket of this daemon.
+fn remove_own_socket(socket: &Path) -> io::Result<()> {
+    match fs::symlink_metadata(socket) {
+        Ok(metadata) => {
+            if metadata.uid() != current_uid()? {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!("the socket belongs to another user: {}", socket.display()),
+                ));
+            }
+            fs::remove_file(socket)?;
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {},
+        Err(e) => return Err(e),
+    }
+
+    Ok(())
 }
 
 /// Handles one client connection.
