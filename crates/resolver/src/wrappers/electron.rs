@@ -19,24 +19,27 @@ pub fn inspect_electron(
     ancestry: &[ProcessInfo],
     desktop_db: &DesktopDatabase,
 ) -> Option<UnwrappedApp> {
-    if !is_electron_or_chromium(proc) && !ancestry.iter().any(is_electron_or_chromium) {
+    // The process itself has to be an application of `Electron` or one of its
+    // helpers. An ancestor alone does not make it one: a native application
+    // that was started from a browser or from an editor would be claimed by
+    // the launcher otherwise.
+    if !is_electron_or_chromium(proc) {
         return None;
     }
 
-    // Find the main process:
-    // The main process usually does NOT have `--type=`.
-    let main_proc = ancestry
-        .iter()
-        .rev()
-        .find(|info| is_electron_or_chromium(info) && !is_sub_process(info))
-        .or_else(|| {
-            if is_sub_process(proc) {
-                ancestry.first()
-            } else {
-                Some(proc)
-            }
-        })
-        .unwrap_or(proc);
+    // The main process is the process itself, unless it is a helper. A helper
+    // belongs to the main process that started it, which is the nearest
+    // ancestor that is an application of `Electron` and no helper itself.
+    let main_proc = if is_sub_process(proc) {
+        ancestry
+            .iter()
+            .find(|info| {
+                info.pid != proc.pid && is_electron_or_chromium(info) && !is_sub_process(info)
+            })
+            .unwrap_or(proc)
+    } else {
+        proc
+    };
 
     let target_pid = main_proc.pid;
 
@@ -44,10 +47,9 @@ pub fn inspect_electron(
     let mut user_data_name = None;
     let mut app_url_or_path = None;
 
-    let mut all_procs = vec![proc];
-    all_procs.extend(ancestry.iter());
-
-    for p in all_procs {
+    // The name of the application stands in the command line of the process
+    // itself and in the one of its main process.
+    for p in [proc, main_proc] {
         if asar_name.is_none()
             && let Some(name) = extract_asar_app_name(&p.cmdline)
         {
@@ -237,7 +239,28 @@ fn extract_app_flag(cmdline: &[String]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, path::PathBuf};
+
+    use pipelink_common::types::Pid;
+
     use super::*;
+    use crate::desktop::DesktopDatabase;
+
+    /// A process of the test with the given id, name and command line.
+    fn process(pid: u32, comm: &str, cmdline: &[&str]) -> ProcessInfo {
+        ProcessInfo {
+            pid: Pid(pid),
+            ppid: None,
+            start_time: None,
+            comm: comm.to_string(),
+            exe: Some(PathBuf::from(format!("/usr/bin/{comm}"))),
+            cmdline: cmdline.iter().map(|arg| (*arg).to_string()).collect(),
+            environ: HashMap::new(),
+            cgroup: None,
+            cwd: None,
+            root_dir: PathBuf::from("/proc"),
+        }
+    }
 
     #[test]
     fn test_extract_asar_app_name() {
@@ -263,6 +286,56 @@ mod tests {
         assert_eq!(
             extract_user_data_dir_name(&cmd),
             Some("YouTube Music".to_string())
+        );
+    }
+
+    #[test]
+    fn test_a_native_process_below_an_electron_launcher_is_no_electron_application() {
+        let native = process(100, "reaper", &["/usr/bin/reaper"]);
+        let launcher = process(
+            10,
+            "node",
+            &["node", "/usr/share/code/resources/app/out/node/cli.js"],
+        );
+        let ancestry = [native.clone(), launcher];
+
+        let result = inspect_electron(&native, &ancestry, &DesktopDatabase::default());
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_an_electron_helper_belongs_to_its_main_process() {
+        let helper = process(200, "chrome", &["/usr/bin/chrome", "--type=renderer"]);
+        let main = process(100, "chrome", &["/usr/bin/chrome"]);
+        let ancestry = [helper.clone(), main];
+
+        let result = inspect_electron(&helper, &ancestry, &DesktopDatabase::default());
+
+        assert_eq!(result.map(|unwrapped| unwrapped.target_pid), Some(Pid(100)));
+    }
+
+    #[test]
+    fn test_an_electron_application_is_resolved_as_itself() {
+        let app = process(
+            300,
+            "Discord",
+            &["/opt/discord/Discord", "/opt/discord/resources/app.asar"],
+        );
+
+        let result = inspect_electron(
+            &app,
+            std::slice::from_ref(&app),
+            &DesktopDatabase::default(),
+        );
+
+        assert_eq!(
+            result.as_ref().map(|unwrapped| unwrapped.target_pid),
+            Some(Pid(300))
+        );
+        assert_eq!(
+            result.as_ref().map(|unwrapped| unwrapped.app_name.as_str()),
+            Some("discord")
         );
     }
 }
