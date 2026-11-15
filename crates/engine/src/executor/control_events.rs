@@ -8,6 +8,7 @@
 use pipelink_common::{
     error::ExecutorError,
     events::StateEvent,
+    graph::audio_graph::ChannelMix,
     types::{ChannelName, MixName},
 };
 use pipelink_jack::JackError;
@@ -165,16 +166,14 @@ impl Executor {
         channel: ChannelName,
         mix: MixName,
     ) -> Result<(), ExecutorError> {
-        let Some(route) = self.graph.get_route_mut(&channel, &mix) else {
-            warn!("Cannot add route ({channel} -> {mix}): channel or mix not found");
-            return Ok(());
-        };
-        route.active = true;
-
-        self.sync_jack_route(&channel, &mix)?;
-        let _ = self
-            .state_tx
-            .send(StateEvent::MixChannelAdded { channel, mix });
+        if self
+            .update_route_and_sync(&channel, &mix, |route| route.active = true)?
+            .is_some()
+        {
+            let _ = self
+                .state_tx
+                .send(StateEvent::MixChannelAdded { channel, mix });
+        }
         Ok(())
     }
 
@@ -184,16 +183,14 @@ impl Executor {
         channel: ChannelName,
         mix: MixName,
     ) -> Result<(), ExecutorError> {
-        let Some(route) = self.graph.get_route_mut(&channel, &mix) else {
-            warn!("Cannot remove route ({channel} -> {mix}): channel or mix not found");
-            return Ok(());
-        };
-        route.active = false;
-
-        self.sync_jack_route(&channel, &mix)?;
-        let _ = self
-            .state_tx
-            .send(StateEvent::MixChannelRemoved { channel, mix });
+        if self
+            .update_route_and_sync(&channel, &mix, |route| route.active = false)?
+            .is_some()
+        {
+            let _ = self
+                .state_tx
+                .send(StateEvent::MixChannelRemoved { channel, mix });
+        }
         Ok(())
     }
 
@@ -204,20 +201,20 @@ impl Executor {
         mix: MixName,
         percent: f32,
     ) -> Result<(), ExecutorError> {
+        let percent = normalize_percent(percent);
         let gain_linear = percent_to_linear(percent);
-        let Some(route) = self.graph.get_route_mut(&channel, &mix) else {
-            warn!("Cannot set gain on ({channel} -> {mix}): channel or mix not found");
-            return Ok(());
-        };
-        route.gain = gain_linear;
 
-        self.sync_jack_route(&channel, &mix)?;
-        let _ = self.state_tx.send(StateEvent::GainChanged {
-            channel,
-            mix,
-            gain_linear,
-            percent,
-        });
+        if self
+            .update_route_and_sync(&channel, &mix, |route| route.gain = gain_linear)?
+            .is_some()
+        {
+            let _ = self.state_tx.send(StateEvent::GainChanged {
+                channel,
+                mix,
+                gain_linear,
+                percent,
+            });
+        }
         Ok(())
     }
 
@@ -228,43 +225,79 @@ impl Executor {
         mix: MixName,
         muted: bool,
     ) -> Result<(), ExecutorError> {
-        let Some(route) = self.graph.get_route_mut(&channel, &mix) else {
-            warn!("Cannot set mute on ({channel} -> {mix}): channel or mix not found");
-            return Ok(());
-        };
-        route.muted = muted;
-
-        self.sync_jack_route(&channel, &mix)?;
-        let _ = self.state_tx.send(StateEvent::MuteChanged {
-            channel,
-            mix,
-            muted,
-        });
+        if self
+            .update_route_and_sync(&channel, &mix, |route| route.muted = muted)?
+            .is_some()
+        {
+            let _ = self.state_tx.send(StateEvent::MuteChanged {
+                channel,
+                mix,
+                muted,
+            });
+        }
         Ok(())
     }
 
-    fn sync_jack_route(
+    /// Computes the updated route, pushes its effective linear gain to JACK,
+    /// and commits the mutation in `AudioGraph` only once JACK accepts it.
+    fn update_route_and_sync<F>(
         &mut self,
         channel: &ChannelName,
         mix: &MixName,
-    ) -> Result<(), ExecutorError> {
-        let Some(route) = self.graph.get_route(channel, mix) else {
-            return Ok(());
+        update: F,
+    ) -> Result<Option<ChannelMix>, ExecutorError>
+    where
+        F: FnOnce(&mut ChannelMix),
+    {
+        let Some(mut next) = self.graph.get_route(channel, mix).cloned() else {
+            warn!("Cannot update route ({channel} -> {mix}): channel or mix not found");
+            let _ = self.state_tx.send(StateEvent::RouteOperationFailed {
+                channel: channel.clone(),
+                mix: mix.clone(),
+                error: "channel or mix not found".to_string(),
+            });
+            return Ok(None);
         };
-        self.jack
-            .set_route(channel, mix, route.effective_gain())
-            .map_err(|err| ExecutorError::Jack(err.to_string()))
+
+        update(&mut next);
+
+        match self.jack.set_route(channel, mix, next.effective_gain()) {
+            Ok(()) => {
+                if let Some(slot) = self.graph.get_route_mut(channel, mix) {
+                    *slot = next.clone();
+                }
+                Ok(Some(next))
+            },
+            Err(JackError::ChannelClosed) => {
+                Err(ExecutorError::Jack(JackError::ChannelClosed.to_string()))
+            },
+            Err(err) => {
+                warn!("Failed to update JACK route ({channel} -> {mix}): {err}");
+                let _ = self.state_tx.send(StateEvent::RouteOperationFailed {
+                    channel: channel.clone(),
+                    mix: mix.clone(),
+                    error: err.to_string(),
+                });
+                Ok(None)
+            },
+        }
     }
 }
 
-/// Converts a percentage (`0.0` = silence, `100.0` = unity) to a linear gain multiplier.
+/// Clamps negative or non-finite percentages to `0.0`.
 #[inline]
-fn percent_to_linear(percent: f32) -> f32 {
+fn normalize_percent(percent: f32) -> f32 {
     if !percent.is_finite() || percent <= 0.0 {
         0.0
     } else {
-        percent / 100.0
+        percent
     }
+}
+
+/// Converts a normalized percentage (`0.0` = silence, `100.0` = unity) to a linear multiplier.
+#[inline]
+fn percent_to_linear(percent: f32) -> f32 {
+    normalize_percent(percent) / 100.0
 }
 
 #[cfg(test)]
