@@ -43,6 +43,15 @@ impl Node {
             .any(|port| port.direction == direction && port.position == position)
     }
 
+    /// Returns the `PortId` matching `direction` and `position`, if registered.
+    #[must_use]
+    pub fn port_id(&self, direction: PortDirection, position: ChannelPosition) -> Option<PortId> {
+        self.ports
+            .iter()
+            .find(|(_, info)| info.direction == direction && info.position == position)
+            .map(|(id, _)| *id)
+    }
+
     /// Registers a port on this node if the `node_id` matches.
     pub fn on_port_appeared(
         &mut self,

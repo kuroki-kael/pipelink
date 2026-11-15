@@ -6,7 +6,7 @@
 use crate::{
     error::ExecutorError,
     graph::{app_node::AppNode, channel::Channel, link::StereoLink, mix::Mix},
-    types::{ChannelName, MixName},
+    types::{ChannelName, MixName, NodeId},
 };
 
 /// Routing entry pairing a single channel with a single mix in the N:M matrix.
@@ -67,6 +67,8 @@ pub struct AudioGraph {
     mixes: Vec<Mix>,
     /// Currently selected active mix, if any.
     pub active_mix: Option<MixName>,
+    /// `PipeWire` node id of the `PipeLink` `JACK` client, once discovered.
+    pub jack_node_id: Option<NodeId>,
     /// Active stereo links between `PipeWire` nodes.
     pub links: Vec<StereoLink>,
     /// Resolved application stream nodes currently tracked in the graph.
