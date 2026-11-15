@@ -5,12 +5,14 @@
 
 //! The command line interface of the daemon and the cli.
 
+mod app;
 mod channel;
 mod mix;
 mod route;
 
 use std::io;
 
+use app::AppAction;
 use channel::ChannelAction;
 use clap::{
     CommandFactory, Parser, Subcommand,
@@ -43,6 +45,11 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Runs the audio routing daemon
     Daemon,
+    /// Manage applications and app-to-channel routes
+    App {
+        #[command(subcommand)]
+        action: AppAction,
+    },
     /// Manage audio routes
     Route {
         #[command(subcommand)]
@@ -108,16 +115,26 @@ async fn print_status() {
         Err(e) => fail(daemon_error(&e)),
     };
 
+    let app_routes = match crate::ipc::send_query(ControlEvent::ListAppChannels).await {
+        Ok(ControlReply::AppChannels { routes }) => routes,
+        Ok(other) => fail(format!("unexpected answer: {other:?}")),
+        Err(e) => fail(daemon_error(&e)),
+    };
+
     println!(
-        "daemon is running: {} channel(s), {} mix(es)",
+        "daemon is running: {} channel(s), {} mix(es), {} app route(s)",
         channels.len(),
-        mixes.len()
+        mixes.len(),
+        app_routes.len()
     );
     for name in channels {
         println!("  channel: {name}");
     }
     for name in mixes {
         println!("  mix: {name}");
+    }
+    for (app, channel) in app_routes {
+        println!("  app route: {app} -> {channel}");
     }
 }
 
@@ -140,6 +157,7 @@ async fn run_command(command: Command) {
                 std::process::exit(1);
             }
         },
+        Command::App { action } => app::run(action).await,
         Command::Route { action } => route::run(action).await,
         Command::Channel { action } => channel::run(action).await,
         Command::Mix { action } => mix::run(action).await,
