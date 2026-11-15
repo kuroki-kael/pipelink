@@ -262,7 +262,9 @@ impl LoopState {
                 app: None,
                 pid,
                 serial,
+                description: dict.get("node.description").map(ToString::to_string),
                 nick: dict.get("node.nick").map(ToString::to_string),
+                is_hardware: dict.get("device.id").is_some(),
             });
         }
 

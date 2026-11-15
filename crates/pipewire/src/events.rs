@@ -31,8 +31,12 @@ pub enum PipewireEvent {
         pid: Option<Pid>,
         /// used for link generation
         serial: Option<NodeSerial>,
+        /// `node.description` prop
+        description: Option<String>,
         /// `node.nick` prop
         nick: Option<String>,
+        /// `true` when `device.id` prop is present (hardware device)
+        is_hardware: bool,
     },
 
     NodeRemoved {
