@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use pipelink_common::{
     error::ExecutorError,
@@ -86,6 +86,10 @@ impl Executor {
     /// # Errors
     /// Returns an [`ExecutorError`] if sending a command fails.
     pub async fn run(&mut self) -> Result<(), ExecutorError> {
+        const RECLAIM_POLL_INTERVAL: Duration = Duration::from_millis(10);
+        let mut reclaim_interval = tokio::time::interval(RECLAIM_POLL_INTERVAL);
+        reclaim_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
             tokio::select! {
                 Some(envelope) = self.control_rx.recv() => {
@@ -95,6 +99,9 @@ impl Executor {
                 }
                 Some(event) = self.pw_rx.recv() => {
                     self.handle_pipewire_event(event);
+                }
+                _ = reclaim_interval.tick(), if self.jack.pending_reclaims() > 0 => {
+                    self.jack.reclaim();
                 }
                 else => {
                     break;
