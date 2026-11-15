@@ -15,7 +15,12 @@ impl Executor {
                 Self::reply(
                     reply,
                     ControlReply::Channels {
-                        names: self.graph.channels.iter().map(|c| c.name.clone()).collect(),
+                        names: self
+                            .graph
+                            .channels()
+                            .iter()
+                            .map(|c| c.name.clone())
+                            .collect(),
                     },
                 );
                 None
@@ -24,7 +29,7 @@ impl Executor {
                 Self::reply(
                     reply,
                     ControlReply::Mixes {
-                        names: self.graph.mixes.iter().map(|m| m.name.clone()).collect(),
+                        names: self.graph.mixes().iter().map(|m| m.name.clone()).collect(),
                     },
                 );
                 None

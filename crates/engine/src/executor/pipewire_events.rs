@@ -26,29 +26,29 @@ impl Executor {
         name: &NodeName,
         serial: Option<NodeSerial>,
     ) {
-        let channel_name = name.strip_prefix("pipelink.channel.");
-        let mix_part = name.strip_prefix("pipelink.mix.");
-
-        if let Some(channel_name) = channel_name
-            && let Some(ch) = self
+        if let Some(channel_name) = name.strip_prefix("pipelink.channel.") {
+            if let Some(ch) = self
                 .graph
-                .channels
+                .channels_mut()
                 .iter_mut()
                 .find(|c| c.name == channel_name)
-        {
-            ch.node.name = name.clone();
-            ch.node.id = Some(id);
-            ch.node.serial = serial;
-            info!("Channel '{}' has the id {id}", ch.name);
-        }
-
-        if let Some(mix_part) = mix_part {
+            {
+                ch.node.name = name.clone();
+                ch.node.id = Some(id);
+                ch.node.serial = serial;
+                info!("Channel '{}' has the id {id}", ch.name);
+            }
+        } else if let Some(mix_part) = name.strip_prefix("pipelink.mix.") {
             let (mix_name, is_source) = match mix_part.strip_suffix(".source") {
                 Some(base) => (base, true),
                 None => (mix_part, false),
             };
-
-            if let Some(m) = self.graph.mixes.iter_mut().find(|m| m.name == mix_name) {
+            if let Some(m) = self
+                .graph
+                .mixes_mut()
+                .iter_mut()
+                .find(|m| m.name == mix_name)
+            {
                 let node = if is_source {
                     &mut m.source
                 } else {
@@ -76,7 +76,7 @@ impl Executor {
     ) {
         if let Some(ch) = self
             .graph
-            .channels
+            .channels_mut()
             .iter_mut()
             .find(|c| c.node.id == Some(node_id))
             && ch.node.on_port_appeared(id, node_id, direction, position)
@@ -92,7 +92,7 @@ impl Executor {
 
         if let Some(m) = self
             .graph
-            .mixes
+            .mixes_mut()
             .iter_mut()
             .find(|m| m.sink.id == Some(node_id))
             && m.sink.on_port_appeared(id, node_id, direction, position)
@@ -106,7 +106,7 @@ impl Executor {
             });
         } else if let Some(m) = self
             .graph
-            .mixes
+            .mixes_mut()
             .iter_mut()
             .find(|m| m.source.id == Some(node_id))
             && m.source.on_port_appeared(id, node_id, direction, position)
@@ -133,9 +133,6 @@ impl Executor {
         if let Some(ref name) = node_name
             && name.starts_with("pipelink.")
         {
-            return;
-        }
-        if self.graph.channels.iter().any(|c| c.node.id == Some(id)) {
             return;
         }
 
@@ -171,25 +168,24 @@ impl Executor {
     pub(super) fn on_global_removed(&mut self, id: GlobalId) {
         let id = NodeId::from(id);
 
-        let channel = self
+        if let Some(Some(channel)) = self
             .graph
-            .channels
+            .channels()
             .iter()
             .position(|c| c.node.id == Some(id))
-            .map(|pos| self.graph.channels.remove(pos));
-        let mix = self
-            .graph
-            .mixes
-            .iter()
-            .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
-            .map(|pos| self.graph.mixes.remove(pos));
-
-        if let Some(channel) = channel {
+            .map(|pos| self.graph.remove_channel_idx(pos))
+        {
             let _ = self.state_tx.send(StateEvent::ChannelRemoved {
                 channel: channel.name,
             });
         }
-        if let Some(mix) = mix {
+        if let Some(Some(mix)) = self
+            .graph
+            .mixes()
+            .iter()
+            .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
+            .map(|pos| self.graph.remove_mix_idx(pos))
+        {
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
         }
 
@@ -211,7 +207,7 @@ impl Executor {
     pub(super) fn on_global_removal_failed(&mut self, id: GlobalId, reason: &str) {
         let id = NodeId::from(id);
 
-        if let Some(channel) = self.graph.channels.iter().find(|c| c.node.id == Some(id)) {
+        if let Some(channel) = self.graph.channels().iter().find(|c| c.node.id == Some(id)) {
             warn!("Channel '{}' could not be removed: {reason}", channel.name);
             let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
                 channel: channel.name.clone(),
@@ -221,7 +217,7 @@ impl Executor {
 
         if let Some(mix) = self
             .graph
-            .mixes
+            .mixes()
             .iter()
             .find(|m| m.source.id == Some(id) || m.sink.id == Some(id))
         {
@@ -238,7 +234,7 @@ impl Executor {
     /// The channel was added to the graph optimistically, so it has to be
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
-        self.graph.channels.retain(|c| c.name != name);
+        self.graph.remove_channel(&name);
 
         warn!("Channel '{name}' could not be created: {reason}");
 
@@ -263,7 +259,7 @@ impl Executor {
     /// The mix was added to the graph optimistically, so it has to be taken
     /// out again once the creation fails.
     pub(super) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
-        self.graph.mixes.retain(|m| m.name != name);
+        self.graph.remove_mix(&name);
 
         warn!("Mix '{name}' could not be created: {reason}");
 

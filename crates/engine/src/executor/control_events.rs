@@ -8,7 +8,6 @@
 use pipelink_common::{
     error::ExecutorError,
     events::StateEvent,
-    graph::{channel::Channel, mix::Mix},
     types::{ChannelName, MixName},
 };
 use pipelink_pw::Command as PipewireCommand;
@@ -22,13 +21,14 @@ impl Executor {
     /// The channel enters the graph optimistically, before `PipeWire` confirms
     /// it, and is taken out again on `ChannelCreationFailed`.
     pub(super) fn on_create_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
-        if self.graph.channels.iter().any(|c| c.name == name) {
-            warn!("Channel {} already exists", name);
+        if let Err(err) = self.graph.add_channel(name.clone()) {
+            warn!("{err}");
+            let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
+                channel: name,
+                error: err.to_string(),
+            });
             return Ok(());
         }
-
-        let channel = Channel::new(name.clone());
-        self.graph.channels.push(channel);
 
         self.pw_tx
             .send(PipewireCommand::CreateChannel { name })
@@ -44,7 +44,9 @@ impl Executor {
     /// not exist is reported as a failed removal, otherwise the client would
     /// wait for an event that never arrives.
     pub(super) fn on_remove_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
-        let Some(channel) = self.graph.channels.iter().find(|c| c.name == name).cloned() else {
+        let channels = self.graph.channels();
+
+        let Some(channel) = channels.iter().find(|c| c.name == name).cloned() else {
             let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
                 channel: name,
                 error: "there is no channel with this name".to_string(),
@@ -53,8 +55,7 @@ impl Executor {
         };
 
         if channel.node.id.is_none() {
-            // The sink was never created, so there is nothing to destroy.
-            self.graph.channels.retain(|c| c.name != name);
+            self.graph.remove_channel(&name);
             let _ = self
                 .state_tx
                 .send(StateEvent::ChannelRemoved { channel: name });
@@ -70,13 +71,14 @@ impl Executor {
 
     /// Creates a mix together with the `PipeWire` loopback backing it.
     pub(super) fn on_create_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
-        if self.graph.mixes.iter().any(|m| m.name == name) {
-            warn!("Mix {} already exists", name);
+        if let Err(err) = self.graph.add_mix(name.clone()) {
+            warn!("{err}");
+            let _ = self.state_tx.send(StateEvent::MixCreationFailed {
+                mix: name,
+                error: err.to_string(),
+            });
             return Ok(());
         }
-
-        let mix = Mix::new(name.clone());
-        self.graph.mixes.push(mix);
 
         self.pw_tx
             .send(PipewireCommand::CreateMix { name })
@@ -92,7 +94,9 @@ impl Executor {
     /// exist is reported as a failed removal, otherwise the client would
     /// wait for an event that never arrives.
     pub(super) fn on_remove_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
-        let Some(mix) = self.graph.mixes.iter().find(|m| m.name == name).cloned() else {
+        let mixes = self.graph.mixes();
+
+        let Some(mix) = mixes.iter().find(|m| m.name == name).cloned() else {
             let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
                 mix: name,
                 error: "there is no mix with this name".to_string(),
@@ -102,7 +106,7 @@ impl Executor {
 
         if mix.sink.id.is_none() && mix.source.id.is_none() {
             // The loopback was never created, so there is nothing to destroy.
-            self.graph.mixes.retain(|m| m.name != name);
+            self.graph.remove_mix(&name);
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
             return Ok(());
         }

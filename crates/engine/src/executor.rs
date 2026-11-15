@@ -8,13 +8,14 @@ use std::fmt;
 use pipelink_common::{
     error::ExecutorError,
     events::{ControlEvent, ControlReply, StateEvent},
+    graph::audio_graph::AudioGraph,
 };
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
 use pipewire::channel::Sender as ChannelSender;
 use tokio::sync::{broadcast::Sender as Broadcast, mpsc::Receiver, oneshot::Sender};
 
-use crate::{AudioGraph, config::topology::ConfigGraph};
+use crate::config::topology::ConfigGraph;
 
 mod control_events;
 mod pipewire_events;
