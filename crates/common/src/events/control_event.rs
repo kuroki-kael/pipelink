@@ -19,8 +19,8 @@ pub enum ControlEvent {
         channel: ChannelName,
         /// Target mix name.
         mix: MixName,
-        /// Gain value in decibels.
-        db_value: f32,
+        /// Gain percentage (`0.0` = silence, `100.0` = unity gain).
+        percent: f32,
     },
     /// Sets mute status of a channel for a specific mix.
     SetChannelMute {

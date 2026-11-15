@@ -15,12 +15,12 @@ fn test_control_event_json_format() {
     let event = ControlEvent::SetChannelGain {
         channel: ChannelName::from("mic"),
         mix: MixName::from("headphones"),
-        db_value: -6.0,
+        percent: 50.0,
     };
 
     assert_eq!(
         serde_json::to_string(&event).unwrap(),
-        r#"{"type":"set_channel_gain","channel":"mic","mix":"headphones","db_value":-6.0}"#
+        r#"{"type":"set_channel_gain","channel":"mic","mix":"headphones","percent":50.0}"#
     );
 }
 

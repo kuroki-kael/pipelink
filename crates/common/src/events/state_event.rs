@@ -20,8 +20,8 @@ pub enum StateEvent {
         mix: MixName,
         /// Linear gain multiplier.
         gain_linear: f32,
-        /// Gain value in decibels.
-        db_value: f32,
+        /// Gain percentage (`0.0` = silence, `100.0` = unity gain).
+        percent: f32,
     },
     /// Mute state changed for a channel within a mix.
     MuteChanged {
