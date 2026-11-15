@@ -60,6 +60,9 @@ pub(super) async fn run(action: ChannelAction) {
                 Ok(StateEvent::ChannelRemovalFailed { error, .. }) => {
                     fail(format!("failed to remove channel '{name}': {error}"));
                 },
+                Ok(StateEvent::ChannelRemoved { channel }) => {
+                    println!("Channel '{channel}' removed");
+                },
                 Ok(_) => println!("Channel '{name}' removed"),
                 Err(e) => fail(e),
             }
@@ -81,6 +84,6 @@ fn confirms_removed(event: &StateEvent, target: &ChannelName) -> bool {
     matches!(
         event,
         StateEvent::ChannelRemoved { channel } | StateEvent::ChannelRemovalFailed { channel, .. }
-            if channel == target
+            if channel.eq_ignore_ascii_case(target)
     )
 }

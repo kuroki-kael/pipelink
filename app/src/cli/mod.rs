@@ -8,6 +8,7 @@
 mod app;
 mod channel;
 mod mix;
+mod output;
 mod route;
 
 use std::io;
@@ -22,6 +23,7 @@ use clap::{
     },
 };
 use mix::MixAction;
+use output::OutputAction;
 use pipelink_common::events::{ControlEvent, ControlReply};
 use route::RouteAction;
 
@@ -64,6 +66,11 @@ pub(crate) enum Command {
     Mix {
         #[command(subcommand)]
         action: MixAction,
+    },
+    /// Manage audio output sinks
+    Output {
+        #[command(subcommand)]
+        action: OutputAction,
     },
 }
 
@@ -121,12 +128,32 @@ async fn print_status() {
         Err(e) => fail(daemon_error(&e)),
     };
 
+    let active_mix = match crate::ipc::send_query(ControlEvent::GetActiveMix).await {
+        Ok(ControlReply::ActiveMix { mix }) => mix,
+        Ok(other) => fail(format!("unexpected answer: {other:?}")),
+        Err(e) => fail(daemon_error(&e)),
+    };
+
+    let outputs = match crate::ipc::send_query(ControlEvent::ListOutputs).await {
+        Ok(ControlReply::Outputs { outputs }) => outputs,
+        Ok(other) => fail(format!("unexpected answer: {other:?}")),
+        Err(e) => fail(daemon_error(&e)),
+    };
+
     println!(
         "daemon is running: {} channel(s), {} mix(es), {} app route(s)",
         channels.len(),
         mixes.len(),
         app_routes.len()
     );
+    match active_mix {
+        Some(mix) => println!("  active mix: {mix}"),
+        None => println!("  active mix: (none)"),
+    }
+    match outputs.iter().find(|o| o.active) {
+        Some(out) => println!("  output: {}", output::format_output_display(out)),
+        None => println!("  output: (none)"),
+    }
     for name in channels {
         println!("  channel: {name}");
     }
@@ -161,6 +188,7 @@ async fn run_command(command: Command) {
         Command::Route { action } => route::run(action).await,
         Command::Channel { action } => channel::run(action).await,
         Command::Mix { action } => mix::run(action).await,
+        Command::Output { action } => output::run(action).await,
     }
 }
 

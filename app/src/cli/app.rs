@@ -77,7 +77,7 @@ pub(super) async fn run(action: AppAction) {
             };
             let reply = crate::ipc::send_mutation(req, |event| match event {
                 StateEvent::AppRouted { app: a, channel: c } => {
-                    c == &ch && a.eq_ignore_ascii_case(app_display.trim())
+                    c.eq_ignore_ascii_case(&ch) && a.eq_ignore_ascii_case(app_display.trim())
                 },
                 StateEvent::AppRoutingFailed { app: a, .. } => {
                     a.eq_ignore_ascii_case(app_display.trim()) || a == &app_display

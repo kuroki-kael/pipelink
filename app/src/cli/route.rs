@@ -62,14 +62,17 @@ pub(super) async fn run(action: RouteAction) {
                 channel: ch.clone(),
                 mix: mx.clone(),
             };
-            send_route_mutation(req, &ch, &mx, |event| {
+            let reply = send_route_mutation(req, &ch, &mx, |event| {
                 matches!(
                     event,
-                    StateEvent::MixChannelAdded { channel: c, mix: m } if c == &ch && m == &mx
+                    StateEvent::MixChannelAdded { channel: c, mix: m }
+                        if c.eq_ignore_ascii_case(&ch) && m.eq_ignore_ascii_case(&mx)
                 )
             })
             .await;
-            println!("Routed '{channel}' -> '{mix}'");
+            if let StateEvent::MixChannelAdded { channel: c, mix: m } = reply {
+                println!("Routed '{c}' -> '{m}'");
+            }
         },
         RouteAction::Remove { channel, mix } => {
             let ch = ChannelName::from(channel.as_str());
@@ -78,14 +81,17 @@ pub(super) async fn run(action: RouteAction) {
                 channel: ch.clone(),
                 mix: mx.clone(),
             };
-            send_route_mutation(req, &ch, &mx, |event| {
+            let reply = send_route_mutation(req, &ch, &mx, |event| {
                 matches!(
                     event,
-                    StateEvent::MixChannelRemoved { channel: c, mix: m } if c == &ch && m == &mx
+                    StateEvent::MixChannelRemoved { channel: c, mix: m }
+                        if c.eq_ignore_ascii_case(&ch) && m.eq_ignore_ascii_case(&mx)
                 )
             })
             .await;
-            println!("Removed route '{channel}' -> '{mix}'");
+            if let StateEvent::MixChannelRemoved { channel: c, mix: m } = reply {
+                println!("Removed route '{c}' -> '{m}'");
+            }
         },
         RouteAction::Gain {
             channel,
@@ -102,17 +108,19 @@ pub(super) async fn run(action: RouteAction) {
             let reply = send_route_mutation(req, &ch, &mx, |event| {
                 matches!(
                     event,
-                    StateEvent::GainChanged { channel: c, mix: m, .. } if c == &ch && m == &mx
+                    StateEvent::GainChanged { channel: c, mix: m, .. }
+                        if c.eq_ignore_ascii_case(&ch) && m.eq_ignore_ascii_case(&mx)
                 )
             })
             .await;
             if let StateEvent::GainChanged {
+                channel: c,
+                mix: m,
                 gain_linear,
                 percent,
-                ..
             } = reply
             {
-                println!("Gain for '{channel}' -> '{mix}' set to {percent}% ({gain_linear}x)");
+                println!("Gain for '{c}' -> '{m}' set to {percent}% ({gain_linear}x)");
             }
         },
         RouteAction::Mute { channel, mix } => set_mute(channel, mix, true).await,
@@ -128,15 +136,21 @@ async fn set_mute(channel: String, mix: String, muted: bool) {
         mix: mx.clone(),
         muted,
     };
-    send_route_mutation(req, &ch, &mx, |event| {
+    let reply = send_route_mutation(req, &ch, &mx, |event| {
         matches!(
             event,
-            StateEvent::MuteChanged { channel: c, mix: m, .. } if c == &ch && m == &mx
+            StateEvent::MuteChanged { channel: c, mix: m, .. }
+                if c.eq_ignore_ascii_case(&ch) && m.eq_ignore_ascii_case(&mx)
         )
     })
     .await;
     let state = if muted { "muted" } else { "unmuted" };
-    println!("Route '{channel}' -> '{mix}' {state}");
+    if let StateEvent::MuteChanged {
+        channel: c, mix: m, ..
+    } = reply
+    {
+        println!("Route '{c}' -> '{m}' {state}");
+    }
 }
 
 async fn send_route_mutation(
@@ -150,7 +164,7 @@ async fn send_route_mutation(
             || matches!(
                 event,
                 StateEvent::RouteOperationFailed { channel, mix, .. }
-                    if channel == ch && mix == mx
+                    if channel.eq_ignore_ascii_case(ch) && mix.eq_ignore_ascii_case(mx)
             )
     })
     .await;
