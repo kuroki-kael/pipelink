@@ -68,7 +68,11 @@ impl Executor {
     pub(super) fn on_remove_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
         let channels = self.graph.channels();
 
-        let Some(channel) = channels.iter().find(|c| c.name == name).cloned() else {
+        let Some(channel) = channels
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(&name))
+            .cloned()
+        else {
             let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
                 channel: name,
                 error: "there is no channel with this name".to_string(),
@@ -76,15 +80,19 @@ impl Executor {
             return Ok(());
         };
 
+        let canonical = channel.name.clone();
         if channel.node.id.is_none() {
-            self.graph.remove_channel(&name);
-            self.clear_channel_app_routes(&name);
-            if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
-                warn!("Failed to remove JACK channel '{name}': {err}");
+            self.graph.remove_channel(&canonical);
+            self.clear_channel_app_routes(&canonical);
+            if let Err(err) = self
+                .jack
+                .remove_channel(&canonical, self.graph.gains_snapshot())
+            {
+                warn!("Failed to remove JACK channel '{canonical}': {err}");
             }
             let _ = self
                 .state_tx
-                .send(StateEvent::ChannelRemoved { channel: name });
+                .send(StateEvent::ChannelRemoved { channel: canonical });
             return Ok(());
         }
 
@@ -128,6 +136,8 @@ impl Executor {
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
+        self.maybe_auto_select_active_mix(&name);
+
         Ok(())
     }
 
@@ -140,7 +150,11 @@ impl Executor {
     pub(super) fn on_remove_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
         let mixes = self.graph.mixes();
 
-        let Some(mix) = mixes.iter().find(|m| m.name == name).cloned() else {
+        let Some(mix) = mixes
+            .iter()
+            .find(|m| m.name.eq_ignore_ascii_case(&name))
+            .cloned()
+        else {
             let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
                 mix: name,
                 error: "there is no mix with this name".to_string(),
@@ -148,13 +162,20 @@ impl Executor {
             return Ok(());
         };
 
+        let canonical = mix.name.clone();
         if mix.sink.id.is_none() && mix.source.id.is_none() {
             // The loopback was never created, so there is nothing to destroy.
-            self.graph.remove_mix(&name);
-            if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
-                warn!("Failed to remove JACK mix '{name}': {err}");
+            self.graph.remove_mix(&canonical);
+            if let Err(err) = self
+                .jack
+                .remove_mix(&canonical, self.graph.gains_snapshot())
+            {
+                warn!("Failed to remove JACK mix '{canonical}': {err}");
             }
-            let _ = self.state_tx.send(StateEvent::MixRemoved { mix: name });
+            let _ = self
+                .state_tx
+                .send(StateEvent::MixRemoved { mix: canonical });
+            self.ensure_active_mix();
             return Ok(());
         }
 
@@ -171,6 +192,7 @@ impl Executor {
         channel: ChannelName,
         mix: MixName,
     ) -> Result<(), ExecutorError> {
+        let (channel, mix) = self.resolve_route_names(channel, mix);
         if self
             .update_route_and_sync(&channel, &mix, |route| route.active = true)?
             .is_some()
@@ -188,6 +210,7 @@ impl Executor {
         channel: ChannelName,
         mix: MixName,
     ) -> Result<(), ExecutorError> {
+        let (channel, mix) = self.resolve_route_names(channel, mix);
         if self
             .update_route_and_sync(&channel, &mix, |route| route.active = false)?
             .is_some()
@@ -207,6 +230,7 @@ impl Executor {
         mix: MixName,
         percent: f32,
     ) -> Result<(), ExecutorError> {
+        let (channel, mix) = self.resolve_route_names(channel, mix);
         let percent = normalize_percent(percent);
         let gain_linear = percent_to_linear(percent);
 
@@ -231,6 +255,7 @@ impl Executor {
         mix: MixName,
         muted: bool,
     ) -> Result<(), ExecutorError> {
+        let (channel, mix) = self.resolve_route_names(channel, mix);
         if self
             .update_route_and_sync(&channel, &mix, |route| route.muted = muted)?
             .is_some()
@@ -242,6 +267,12 @@ impl Executor {
             });
         }
         Ok(())
+    }
+
+    fn resolve_route_names(&self, channel: ChannelName, mix: MixName) -> (ChannelName, MixName) {
+        let channel = self.graph.resolve_channel_name(&channel).unwrap_or(channel);
+        let mix = self.graph.resolve_mix_name(&mix).unwrap_or(mix);
+        (channel, mix)
     }
 
     /// Computes the updated route, pushes its effective linear gain to JACK,

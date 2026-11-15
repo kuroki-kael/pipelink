@@ -19,7 +19,7 @@ use crate::{config::topology::ConfigGraph, executor::Executor};
 impl Executor {
     /// Routes all active and future stream nodes of `app` (by display name) into
     /// `channel`.
-    pub(super) fn on_route_app(&mut self, app: AppDisplay, channel: ChannelName) {
+    pub(super) fn on_route_app(&mut self, app: AppDisplay, channel: &ChannelName) {
         let trimmed = app.trim();
         if trimmed.is_empty() {
             let _ = self.state_tx.send(StateEvent::AppRoutingFailed {
@@ -29,13 +29,19 @@ impl Executor {
             return;
         }
 
-        let Some(target_channel) = self.graph.channels().iter().find(|c| c.name == channel) else {
+        let Some(target_channel) = self
+            .graph
+            .channels()
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(channel))
+        else {
             let _ = self.state_tx.send(StateEvent::AppRoutingFailed {
                 app,
                 error: format!("there is no channel named '{channel}'"),
             });
             return;
         };
+        let channel = target_channel.name.clone();
         let target_serial = target_channel.node.serial;
 
         // Normalize to the resolved display name when the app is currently running,

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 use pipelink_common::{
-    events::{ActiveAppInfo, ControlEvent, ControlReply},
+    events::{ActiveAppInfo, ControlEvent, ControlReply, OutputDeviceInfo},
     graph::audio_graph::AudioGraph,
     types::{ChannelName, MixName},
 };
@@ -71,7 +71,32 @@ impl Executor {
                 Self::reply(reply, ControlReply::Apps { apps });
                 None
             },
-            // TODO: answer GetActiveMix once a mix can be selected as active.
+            ControlEvent::GetActiveMix => {
+                Self::reply(
+                    reply,
+                    ControlReply::ActiveMix {
+                        mix: self.graph.active_mix.clone(),
+                    },
+                );
+                None
+            },
+            ControlEvent::ListOutputs => {
+                let active = self.graph.selected_output.as_ref();
+                let outputs = self
+                    .graph
+                    .outputs
+                    .iter()
+                    .map(|o| OutputDeviceInfo {
+                        name: o.node.name.clone(),
+                        description: o.description.clone(),
+                        nick: o.nick.clone(),
+                        is_hardware: o.is_hardware,
+                        active: active == Some(&o.node.name),
+                    })
+                    .collect();
+                Self::reply(reply, ControlReply::Outputs { outputs });
+                None
+            },
             other => Some(other),
         }
     }

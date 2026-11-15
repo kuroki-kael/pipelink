@@ -14,8 +14,8 @@ use pipelink_common::{
         port::MixerPort,
     },
     types::{
-        ChannelName, ChannelPosition, GlobalId, LinkId, MixName, NodeId, NodeName, NodeSerial, Pid,
-        PortDirection, PortId,
+        ChannelName, ChannelPosition, GlobalId, LinkId, MediaClass, MixName, NodeId, NodeName,
+        NodeSerial, Pid, PortDirection, PortId,
     },
 };
 use pipelink_pw::Command as PipewireCommand;
@@ -25,13 +25,18 @@ use tracing::{info, warn};
 use crate::executor::Executor;
 
 impl Executor {
-    /// Registers a newly appeared node on the channel, mix, or `JACK` client it belongs
-    /// to.
+    /// Registers a newly appeared node on the channel, mix, output sink, or `JACK`
+    /// client it belongs to.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn on_node_appeared(
         &mut self,
         id: NodeId,
         name: &NodeName,
+        media_class: &MediaClass,
         serial: Option<NodeSerial>,
+        description: Option<String>,
+        nick: Option<String>,
+        is_hardware: bool,
     ) {
         if name == self.jack.client_name() {
             self.graph.jack_node_id = Some(id);
@@ -83,6 +88,11 @@ impl Executor {
                     if is_source { "source" } else { "sink" }
                 );
             }
+            if is_source {
+                self.sync_active_mix_output();
+            }
+        } else if !name.starts_with("pipelink.") && media_class.is_audio_sink() {
+            self.on_output_node_appeared(id, name, serial, description, nick, is_hardware);
         }
     }
 
@@ -126,14 +136,28 @@ impl Executor {
             .iter_mut()
             .find(|m| m.sink.id == Some(node_id) || m.source.id == Some(node_id))
         {
-            let updated = m.sink.on_port_appeared(id, node_id, direction, position)
-                || m.source.on_port_appeared(id, node_id, direction, position);
-            if updated
+            let sink_updated = m.sink.on_port_appeared(id, node_id, direction, position);
+            let source_updated = m.source.on_port_appeared(id, node_id, direction, position);
+            if (sink_updated || source_updated)
                 && let Some(jack_id) = jack_node_id
                 && let Some(stereo_link) = m.prepare_links(jack_id)
             {
                 self.dispatch_create_link(stereo_link);
             }
+            if source_updated {
+                self.sync_active_mix_output();
+            }
+            return;
+        }
+
+        if let Some(out) = self
+            .graph
+            .outputs
+            .iter_mut()
+            .find(|o| o.node.id == Some(node_id))
+            && out.node.on_port_appeared(id, node_id, direction, position)
+        {
+            self.sync_active_mix_output();
         }
     }
 
@@ -221,9 +245,15 @@ impl Executor {
                 return;
             }
         }
+
+        let _ = self
+            .graph
+            .active_output_links
+            .match_appeared(id, out_ep, in_ep);
     }
 
-    /// Clears a disappeared link ID from whichever channel or mix owned it.
+    /// Clears a disappeared link ID from whichever channel, mix, or output route owned
+    /// it.
     pub(super) fn on_link_removed(&mut self, id: LinkId) {
         for ch in self.graph.channels_mut() {
             if ch.links.clear_link_id(id) {
@@ -234,6 +264,9 @@ impl Executor {
             if m.links.clear_link_id(id) {
                 return;
             }
+        }
+        if self.graph.active_output_links.clear_link_id(id) {
+            self.graph.output_links_requested = false;
         }
     }
 
@@ -254,7 +287,7 @@ impl Executor {
         }
     }
 
-    fn dispatch_create_link(&self, stereo_link: StereoLink) {
+    pub(super) fn dispatch_create_link(&self, stereo_link: StereoLink) {
         if let Err(err) = self.pw_tx.send(PipewireCommand::CreateLink { stereo_link }) {
             warn!("Failed to send CreateLink command to PipeWire: {err:?}");
         }
@@ -356,6 +389,21 @@ impl Executor {
                 warn!("Failed to remove JACK mix '{}': {err}", mix.name);
             }
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
+            self.ensure_active_mix();
+        }
+
+        if let Some(pos) = self
+            .graph
+            .outputs
+            .iter()
+            .position(|o| o.node.id == Some(id))
+        {
+            let removed = self.graph.outputs.remove(pos);
+            if self.graph.selected_output.as_ref() == Some(&removed.node.name) {
+                self.graph.selected_output = None;
+                self.ensure_selected_output();
+                self.sync_active_mix_output();
+            }
         }
 
         let mut evicted_pids = Vec::new();
@@ -444,6 +492,7 @@ impl Executor {
         if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK mix '{name}': {err}");
         }
+        self.ensure_active_mix();
 
         warn!("Mix '{name}' could not be created: {reason}");
 

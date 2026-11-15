@@ -24,6 +24,7 @@ use crate::config::topology::ConfigGraph;
 
 mod app_routes;
 mod control_events;
+mod output_routing;
 mod pipewire_events;
 mod query_events;
 
@@ -146,14 +147,18 @@ impl Executor {
                 self.on_set_channel_mute(channel, mix, muted)?;
             },
             ControlEvent::RouteApp { app, channel } => {
-                self.on_route_app(app, channel);
+                self.on_route_app(app, &channel);
             },
             ControlEvent::UnrouteApp { app } => {
                 self.on_unroute_app(app);
             },
-            ControlEvent::SelectGlobalActiveLayer { .. }
-            | ControlEvent::SelectChannelActiveLayer { .. }
-            | _ => {},
+            ControlEvent::SelectGlobalActiveLayer { mix } => {
+                self.on_select_active_mix(mix);
+            },
+            ControlEvent::SetOutput { output } => {
+                self.on_set_output(&output);
+            },
+            ControlEvent::SelectChannelActiveLayer { .. } | _ => {},
         }
 
         Ok(())
@@ -162,9 +167,24 @@ impl Executor {
     fn handle_pipewire_event(&mut self, event: PipewireEvent) {
         match event {
             PipewireEvent::NodeAppeared {
-                id, name, serial, ..
+                id,
+                name,
+                media_class,
+                serial,
+                description,
+                nick,
+                is_hardware,
+                ..
             } => {
-                self.on_node_appeared(id, &name, serial);
+                self.on_node_appeared(
+                    id,
+                    &name,
+                    &media_class,
+                    serial,
+                    description,
+                    nick,
+                    is_hardware,
+                );
             },
             PipewireEvent::MetadataAppeared { .. } => {
                 self.on_metadata_appeared();
