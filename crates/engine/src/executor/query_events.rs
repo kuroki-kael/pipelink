@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 use pipelink_common::{
-    events::{ControlEvent, ControlReply},
+    events::{ActiveAppInfo, ControlEvent, ControlReply},
     graph::audio_graph::AudioGraph,
     types::{ChannelName, MixName},
 };
@@ -47,10 +47,31 @@ impl Executor {
                 );
                 None
             },
-            // The remaining queries report on data models that do not exist yet.
-            // TODO: answer ListAppChannels once the graph knows which app is routed to
-            // which channel. TODO: answer GetActiveMix once a mix can be selected as
-            // active.
+            ControlEvent::ListAppChannels => {
+                Self::reply(
+                    reply,
+                    ControlReply::AppChannels {
+                        routes: self.config.app_routes(),
+                    },
+                );
+                None
+            },
+            ControlEvent::ListApps => {
+                let apps = self
+                    .graph
+                    .apps
+                    .iter()
+                    .map(|a| ActiveAppInfo {
+                        display_name: a.app.display_name.clone(),
+                        app_name: a.app.app_name.clone(),
+                        channel: a.channel.clone(),
+                        stream_count: a.nodes.len(),
+                    })
+                    .collect();
+                Self::reply(reply, ControlReply::Apps { apps });
+                None
+            },
+            // TODO: answer GetActiveMix once a mix can be selected as active.
             other => Some(other),
         }
     }

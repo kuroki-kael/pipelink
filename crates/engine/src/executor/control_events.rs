@@ -54,6 +54,8 @@ impl Executor {
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
+        self.config.ensure_channel(&name);
+
         Ok(())
     }
 
@@ -76,6 +78,7 @@ impl Executor {
 
         if channel.node.id.is_none() {
             self.graph.remove_channel(&name);
+            self.clear_channel_app_routes(&name);
             if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
                 warn!("Failed to remove JACK channel '{name}': {err}");
             }

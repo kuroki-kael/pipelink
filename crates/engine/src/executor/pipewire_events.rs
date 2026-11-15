@@ -41,7 +41,7 @@ impl Executor {
         }
 
         if let Some(channel_name) = name.strip_prefix("pipelink.channel.") {
-            if let Some(ch) = self
+            let synced_channel = if let Some(ch) = self
                 .graph
                 .channels_mut()
                 .iter_mut()
@@ -51,6 +51,12 @@ impl Executor {
                 ch.node.id = Some(id);
                 ch.node.serial = serial;
                 info!("Channel '{}' has the id {id}", ch.name);
+                Some(ch.name.clone())
+            } else {
+                None
+            };
+            if let Some(ch_name) = synced_channel {
+                self.sync_channel_app_routes(&ch_name);
             }
         } else if let Some(mix_part) = name.strip_prefix("pipelink.mix.") {
             let (mix_name, is_source) = match mix_part.strip_suffix(".source") {
@@ -285,12 +291,26 @@ impl Executor {
                 ..Default::default()
             };
 
-            if let Some(existing) = self.graph.apps.iter_mut().find(|a| a.node.id == Some(id)) {
-                existing.app = app;
-                existing.node = node;
+            let app_idx = if let Some(idx) = self
+                .graph
+                .apps
+                .iter()
+                .position(|existing| existing.has_node(id))
+                .or_else(|| {
+                    self.graph
+                        .apps
+                        .iter()
+                        .position(|existing| existing.matches_app(&app))
+                }) {
+                self.graph.apps[idx].app = app;
+                self.graph.apps[idx].upsert_node(node);
+                idx
             } else {
                 self.graph.apps.push(AppNode::new(app, node));
-            }
+                self.graph.apps.len() - 1
+            };
+
+            self.apply_configured_app_route(app_idx, id);
         }
     }
 
@@ -314,6 +334,7 @@ impl Executor {
             .position(|c| c.node.id == Some(id))
             .map(|pos| self.graph.remove_channel_idx(pos))
         {
+            self.clear_channel_app_routes(&channel.name);
             if let Err(err) = self
                 .jack
                 .remove_channel(&channel.name, self.graph.gains_snapshot())
@@ -337,9 +358,15 @@ impl Executor {
             let _ = self.state_tx.send(StateEvent::MixRemoved { mix: mix.name });
         }
 
-        if let Some(pos) = self.graph.apps.iter().position(|a| a.node.id == Some(id)) {
-            let removed = self.graph.apps.remove(pos);
-            let pid = removed.app.pid;
+        let mut evicted_pids = Vec::new();
+        for app_node in &mut self.graph.apps {
+            if app_node.remove_node(id) && app_node.nodes.is_empty() {
+                evicted_pids.push(app_node.app.pid);
+            }
+        }
+        self.graph.apps.retain(|a| !a.nodes.is_empty());
+
+        for pid in evicted_pids {
             let other_active = self.graph.apps.iter().any(|a| a.app.pid == pid);
             if !other_active && !is_process_alive(pid) {
                 self.resolver.invalidate(pid);
@@ -385,6 +412,7 @@ impl Executor {
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
         self.graph.remove_channel(&name);
+        self.clear_channel_app_routes(&name);
         if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK channel '{name}': {err}");
         }
