@@ -106,4 +106,13 @@ pub enum StateEvent {
         /// Reason the mix could not be removed.
         error: String,
     },
+    /// Channel-to-mix route, gain, or mute update failed.
+    RouteOperationFailed {
+        /// Affected channel name.
+        channel: ChannelName,
+        /// Affected mix name.
+        mix: MixName,
+        /// Reason the update failed.
+        error: String,
+    },
 }

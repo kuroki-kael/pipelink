@@ -118,6 +118,17 @@ fn test_state_event_removal_failed_json_format() {
         serde_json::to_string(&event).unwrap(),
         r#"{"type":"mix_removal_failed","mix":"music","error":"there is no mix with this name"}"#
     );
+
+    let event = StateEvent::RouteOperationFailed {
+        channel: ChannelName::from("mic"),
+        mix: MixName::from("music"),
+        error: "channel or mix not found".to_string(),
+    };
+
+    assert_eq!(
+        serde_json::to_string(&event).unwrap(),
+        r#"{"type":"route_operation_failed","channel":"mic","mix":"music","error":"channel or mix not found"}"#
+    );
 }
 
 #[test]
