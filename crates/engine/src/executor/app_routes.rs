@@ -56,6 +56,7 @@ impl Executor {
 
         self.config.ensure_channel(&channel);
         self.config.set_app_route(canonical_app.clone(), &channel);
+        self.storage.save_config(&self.config);
 
         for app_node in self
             .graph
@@ -82,6 +83,9 @@ impl Executor {
     pub(super) fn on_unroute_app(&mut self, app: AppDisplay) {
         let trimmed = app.trim();
         let removed_rule = self.config.remove_app_route(&AppDisplay::from(trimmed));
+        if removed_rule.is_some() {
+            self.storage.save_config(&self.config);
+        }
 
         let mut cleared_any = false;
         let mut canonical_name: Option<AppDisplay> = None;
@@ -194,10 +198,17 @@ impl Executor {
         }
     }
 
-    /// Removes `channel` and all its application rules from `ConfigGraph`, and clears
-    /// `target.object` on any active stream nodes that were routed to it.
-    pub(super) fn clear_channel_app_routes(&mut self, channel: &ChannelName) {
-        self.config.remove_channel(channel);
+    /// Clears `target.object` on any active stream nodes routed to `channel` and,
+    /// when `remove_from_config` is `true`, removes `channel` and its app rules
+    /// from [`ConfigGraph`] and persists the config.
+    pub(super) fn clear_channel_app_routes(
+        &mut self,
+        channel: &ChannelName,
+        remove_from_config: bool,
+    ) {
+        if remove_from_config && self.config.remove_channel(channel) {
+            self.storage.save_config(&self.config);
+        }
 
         for app_node in self
             .graph

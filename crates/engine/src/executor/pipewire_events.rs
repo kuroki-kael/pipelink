@@ -220,12 +220,14 @@ impl Executor {
             if ch.links.match_appeared(id, out_ep, in_ep) {
                 if !ch.added_emitted && ch.is_ready() {
                     ch.added_emitted = true;
-                    info!("Channel '{}' is ready", ch.name);
+                    let ch_name = ch.name.clone();
+                    info!("Channel '{ch_name}' is ready");
+                    self.pending_channel_creates.remove(&ch_name);
                     // The graph entry is optimistic, the ChannelAdded event is sent once
                     // PipeWire has registered all ports and stereo links to JACK.
-                    let _ = self.state_tx.send(StateEvent::ChannelAdded {
-                        channel: ch.name.clone(),
-                    });
+                    let _ = self
+                        .state_tx
+                        .send(StateEvent::ChannelAdded { channel: ch_name });
                 }
                 return;
             }
@@ -235,12 +237,12 @@ impl Executor {
             if m.links.match_appeared(id, out_ep, in_ep) {
                 if !m.added_emitted && m.is_ready() {
                     m.added_emitted = true;
-                    info!("Mix '{}' is ready", m.name);
+                    let mix_name = m.name.clone();
+                    info!("Mix '{mix_name}' is ready");
+                    self.pending_mix_creates.remove(&mix_name);
                     // The graph entry is optimistic, the MixAdded event is sent once
                     // PipeWire has registered all ports and stereo links from JACK.
-                    let _ = self.state_tx.send(StateEvent::MixAdded {
-                        mix: m.name.clone(),
-                    });
+                    let _ = self.state_tx.send(StateEvent::MixAdded { mix: mix_name });
                 }
                 return;
             }
@@ -367,7 +369,8 @@ impl Executor {
             .position(|c| c.node.id == Some(id))
             .map(|pos| self.graph.remove_channel_idx(pos))
         {
-            self.clear_channel_app_routes(&channel.name);
+            let user_requested = self.pending_channel_removals.remove(&channel.name);
+            self.clear_channel_app_routes(&channel.name, user_requested);
             if let Err(err) = self
                 .jack
                 .remove_channel(&channel.name, self.graph.gains_snapshot())
@@ -385,6 +388,9 @@ impl Executor {
             .position(|m| m.source.id == Some(id) || m.sink.id == Some(id))
             .map(|pos| self.graph.remove_mix_idx(pos))
         {
+            if self.pending_mix_removals.remove(&mix.name) && self.config.remove_mix(&mix.name) {
+                self.storage.save_config(&self.config);
+            }
             if let Err(err) = self.jack.remove_mix(&mix.name, self.graph.gains_snapshot()) {
                 warn!("Failed to remove JACK mix '{}': {err}", mix.name);
             }
@@ -432,23 +438,32 @@ impl Executor {
     pub(super) fn on_global_removal_failed(&mut self, id: GlobalId, reason: &str) {
         let id = NodeId::from(id);
 
-        if let Some(channel) = self.graph.channels().iter().find(|c| c.node.id == Some(id)) {
-            warn!("Channel '{}' could not be removed: {reason}", channel.name);
+        if let Some(ch_name) = self
+            .graph
+            .channels()
+            .iter()
+            .find(|c| c.node.id == Some(id))
+            .map(|c| c.name.clone())
+        {
+            self.pending_channel_removals.remove(&ch_name);
+            warn!("Channel '{ch_name}' could not be removed: {reason}");
             let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
-                channel: channel.name.clone(),
+                channel: ch_name,
                 error: reason.to_string(),
             });
         }
 
-        if let Some(mix) = self
+        if let Some(mix_name) = self
             .graph
             .mixes()
             .iter()
             .find(|m| m.source.id == Some(id) || m.sink.id == Some(id))
+            .map(|m| m.name.clone())
         {
-            warn!("Mix '{}' could not be removed: {reason}", mix.name);
+            self.pending_mix_removals.remove(&mix_name);
+            warn!("Mix '{mix_name}' could not be removed: {reason}");
             let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
-                mix: mix.name.clone(),
+                mix: mix_name,
                 error: reason.to_string(),
             });
         }
@@ -460,7 +475,8 @@ impl Executor {
     /// taken out again once the creation fails.
     pub(super) fn on_channel_creation_failed(&mut self, name: ChannelName, reason: &str) {
         self.graph.remove_channel(&name);
-        self.clear_channel_app_routes(&name);
+        let newly_created = self.pending_channel_creates.remove(&name);
+        self.clear_channel_app_routes(&name, newly_created);
         if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK channel '{name}': {err}");
         }
@@ -475,6 +491,7 @@ impl Executor {
 
     /// Reports a mix whose loopback could not be removed.
     pub(super) fn on_mix_removal_failed(&mut self, name: MixName, reason: &str) {
+        self.pending_mix_removals.remove(&name);
         warn!("Mix '{name}' could not be removed: {reason}");
 
         let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
@@ -489,6 +506,9 @@ impl Executor {
     /// out again once the creation fails.
     pub(super) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
         self.graph.remove_mix(&name);
+        if self.pending_mix_creates.remove(&name) && self.config.remove_mix(&name) {
+            self.storage.save_config(&self.config);
+        }
         if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
             warn!("Failed to remove JACK mix '{name}': {err}");
         }

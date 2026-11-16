@@ -15,7 +15,10 @@ use pipelink_jack::JackError;
 use pipelink_pw::Command as PipewireCommand;
 use tracing::warn;
 
-use crate::executor::Executor;
+use crate::{
+    config::state::{normalize_percent, percent_to_linear},
+    executor::Executor,
+};
 
 impl Executor {
     /// Creates a channel together with its `JACK` input ports and `PipeWire` sink.
@@ -54,7 +57,9 @@ impl Executor {
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
+        self.pending_channel_creates.insert(name.clone());
         self.config.ensure_channel(&name);
+        self.storage.save_config(&self.config);
 
         Ok(())
     }
@@ -83,7 +88,7 @@ impl Executor {
         let canonical = channel.name.clone();
         if channel.node.id.is_none() {
             self.graph.remove_channel(&canonical);
-            self.clear_channel_app_routes(&canonical);
+            self.clear_channel_app_routes(&canonical, true);
             if let Err(err) = self
                 .jack
                 .remove_channel(&canonical, self.graph.gains_snapshot())
@@ -96,6 +101,7 @@ impl Executor {
             return Ok(());
         }
 
+        self.pending_channel_removals.insert(canonical);
         self.pw_tx
             .send(PipewireCommand::DeleteChannel { channel })
             .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
@@ -136,7 +142,10 @@ impl Executor {
             return Err(ExecutorError::Pipewire(format!("{err:?}")));
         }
 
+        self.pending_mix_creates.insert(name.clone());
         self.maybe_auto_select_active_mix(&name);
+        self.config.ensure_mix(&name);
+        self.storage.save_config(&self.config);
 
         Ok(())
     }
@@ -166,6 +175,9 @@ impl Executor {
         if mix.sink.id.is_none() && mix.source.id.is_none() {
             // The loopback was never created, so there is nothing to destroy.
             self.graph.remove_mix(&canonical);
+            if self.config.remove_mix(&canonical) {
+                self.storage.save_config(&self.config);
+            }
             if let Err(err) = self
                 .jack
                 .remove_mix(&canonical, self.graph.gains_snapshot())
@@ -179,6 +191,7 @@ impl Executor {
             return Ok(());
         }
 
+        self.pending_mix_removals.insert(canonical);
         self.pw_tx
             .send(PipewireCommand::DeleteMix { mix })
             .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
@@ -197,6 +210,8 @@ impl Executor {
             .update_route_and_sync(&channel, &mix, |route| route.active = true)?
             .is_some()
         {
+            self.config.set_channel_mix(&channel, &mix);
+            self.storage.save_config(&self.config);
             let _ = self
                 .state_tx
                 .send(StateEvent::MixChannelAdded { channel, mix });
@@ -215,6 +230,8 @@ impl Executor {
             .update_route_and_sync(&channel, &mix, |route| route.active = false)?
             .is_some()
         {
+            self.config.remove_channel_mix(&channel, &mix);
+            self.storage.save_config(&self.config);
             let _ = self
                 .state_tx
                 .send(StateEvent::MixChannelRemoved { channel, mix });
@@ -238,6 +255,7 @@ impl Executor {
             .update_route_and_sync(&channel, &mix, |route| route.gain = gain_linear)?
             .is_some()
         {
+            self.storage.mark_state_dirty();
             let _ = self.state_tx.send(StateEvent::GainChanged {
                 channel,
                 mix,
@@ -260,6 +278,7 @@ impl Executor {
             .update_route_and_sync(&channel, &mix, |route| route.muted = muted)?
             .is_some()
         {
+            self.storage.mark_state_dirty();
             let _ = self.state_tx.send(StateEvent::MuteChanged {
                 channel,
                 mix,
@@ -321,43 +340,5 @@ impl Executor {
                 Ok(None)
             },
         }
-    }
-}
-
-/// Upper limit for user-configured channel-to-mix gain percentages (+12 dB).
-const MAX_GAIN_PERCENT: f32 = 400.0;
-
-/// Clamps non-finite or negative percentages to `0.0` and caps at `MAX_GAIN_PERCENT`.
-#[inline]
-fn normalize_percent(percent: f32) -> f32 {
-    if !percent.is_finite() || percent <= 0.0 {
-        0.0
-    } else {
-        percent.min(MAX_GAIN_PERCENT)
-    }
-}
-
-/// Converts a normalized percentage (`0.0` = silence, `100.0` = unity) to a linear
-/// multiplier.
-#[inline]
-fn percent_to_linear(percent: f32) -> f32 {
-    normalize_percent(percent) / 100.0
-}
-
-#[cfg(test)]
-mod tests {
-    use super::percent_to_linear;
-
-    #[test]
-    fn test_percent_to_linear_handles_unity_attenuation_and_silence() {
-        assert!((percent_to_linear(100.0) - 1.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(50.0) - 0.5).abs() < f32::EPSILON);
-        assert!((percent_to_linear(150.0) - 1.5).abs() < f32::EPSILON);
-        assert!((percent_to_linear(400.0) - 4.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(500.0) - 4.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(0.0) - 0.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(-10.0) - 0.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(f32::NAN) - 0.0).abs() < f32::EPSILON);
-        assert!((percent_to_linear(f32::INFINITY) - 0.0).abs() < f32::EPSILON);
     }
 }

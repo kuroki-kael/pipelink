@@ -82,7 +82,7 @@ impl Executor {
             },
         };
 
-        self.apply_selected_output(Some(matched));
+        self.apply_selected_output(Some(matched), true);
         self.sync_active_mix_output();
     }
 
@@ -134,7 +134,7 @@ impl Executor {
             self.config.output.as_ref(),
         );
         if next != self.graph.selected_output {
-            self.apply_selected_output(next);
+            self.apply_selected_output(next, false);
         }
     }
 
@@ -163,6 +163,9 @@ impl Executor {
     }
 
     fn set_active_mix(&mut self, mix: Option<MixName>) {
+        if self.graph.active_mix != mix {
+            self.storage.mark_state_dirty();
+        }
         self.graph.active_mix.clone_from(&mix);
         self.config.active_mix.clone_from(&mix);
         if let Some(mix) = mix {
@@ -173,10 +176,13 @@ impl Executor {
         }
     }
 
-    fn apply_selected_output(&mut self, output: Option<NodeName>) {
+    fn apply_selected_output(&mut self, output: Option<NodeName>, persist_preference: bool) {
         self.graph.selected_output.clone_from(&output);
         if let Some(output) = output {
-            self.config.output = Some(output.clone());
+            if persist_preference {
+                self.config.output = Some(output.clone());
+                self.storage.save_config(&self.config);
+            }
             info!("Selected output set to '{output}'");
             let _ = self.state_tx.send(StateEvent::OutputChanged { output });
         } else {
@@ -229,13 +235,13 @@ fn pick_selected_output(
     current: Option<&NodeName>,
     configured: Option<&NodeName>,
 ) -> Option<NodeName> {
-    if let Some(name) = current
+    if let Some(name) = configured
         && outputs.iter().any(|o| o.node.name == *name)
     {
         return Some(name.clone());
     }
 
-    if let Some(name) = configured
+    if let Some(name) = current
         && outputs.iter().any(|o| o.node.name == *name)
     {
         return Some(name.clone());
@@ -405,6 +411,17 @@ mod tests {
         let fallback =
             pick_selected_output(&only_virt, Some(&NodeName::from("alsa_output.pci")), None);
         assert_eq!(fallback, Some(NodeName::from("virtual.sink")));
+
+        // Configured preferred device (e.g. Bluetooth headphones) reclaims focus when
+        // reconnected.
+        let bluetooth = mk_output("bluez_output.test", Some("Bluetooth Headphones"), true, 3);
+        let with_bt = vec![outputs[0].clone(), outputs[1].clone(), bluetooth];
+        let reclaimed = pick_selected_output(
+            &with_bt,
+            Some(&NodeName::from("alsa_output.pci")),
+            Some(&NodeName::from("bluez_output.test")),
+        );
+        assert_eq!(reclaimed, Some(NodeName::from("bluez_output.test")));
     }
 
     #[test]
