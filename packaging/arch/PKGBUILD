@@ -1,0 +1,46 @@
+# Maintainer: Kuroki-Kael <kuroki@kuroki-kael.com>
+pkgname=pipelink
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Virtual PipeWire/JACK audio routing daemon and CLI'
+arch=('x86_64' 'aarch64')
+url='https://codeberg.org/kuroki-kael/pipelink'
+license=('GPL-3.0-or-later')
+depends=('pipewire' 'pipewire-jack')
+optdepends=('wireplumber: default sink management and desktop session routing')
+makedepends=('cargo' 'clang' 'pkgconf')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+_srcdir() {
+    if [[ -d "${srcdir}/${pkgname}-${pkgver}" ]]; then
+        printf '%s' "${srcdir}/${pkgname}-${pkgver}"
+    else
+        printf '%s' "${srcdir}/${pkgname}"
+    fi
+}
+
+prepare() {
+    cd "$(_srcdir)"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$(_srcdir)"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release -p pipelink
+}
+
+check() {
+    cd "$(_srcdir)"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo test --frozen --workspace
+}
+
+package() {
+    cd "$(_srcdir)"
+    make install DESTDIR="$pkgdir" PREFIX=/usr
+}

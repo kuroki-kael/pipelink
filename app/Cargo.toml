@@ -1,6 +1,8 @@
 [package]
 name = "pipelink"
 version.workspace = true
+description.workspace = true
+repository.workspace = true
 keywords.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -28,3 +30,16 @@ gui = []
 full = []
 web = []
 midi = []
+
+[package.metadata.deb]
+maintainer = "Kuroki-Kael <kuroki@kuroki-kael.com>"
+copyright = "2026, Kuroki-Kael / PipeLink Contributors"
+license-file = ["../LICENSE", "0"]
+depends = "$auto, pipewire, wireplumber, pipewire-jack | libjack-jackd2-0"
+section = "sound"
+priority = "optional"
+assets = [
+    ["target/release/pipelink", "usr/bin/", "755"],
+    ["../packaging/systemd/pipelink.service", "usr/lib/systemd/user/", "644"],
+    ["../packaging/config.example.json", "usr/share/doc/pipelink/", "644"],
+]

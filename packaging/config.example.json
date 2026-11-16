@@ -1,0 +1,36 @@
+{
+  "output": null,
+  "channels": [
+    {
+      "name": "System",
+      "apps": []
+    },
+    {
+      "name": "Music",
+      "apps": []
+    },
+    {
+      "name": "Games",
+      "apps": []
+    },
+    {
+      "name": "Voice",
+      "apps": []
+    }
+  ],
+  "mixes": [
+    {
+      "name": "Personal",
+      "channels": [
+        "System",
+        "Music",
+        "Games",
+        "Voice"
+      ]
+    },
+    {
+      "name": "Stream",
+      "channels": []
+    }
+  ]
+}
