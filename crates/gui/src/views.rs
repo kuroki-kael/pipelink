@@ -5,6 +5,7 @@
 
 //! Top-level UI view composition implemented on [`App`].
 
+mod channel_modal;
 mod matrix;
 mod settings;
 mod sidebar;
@@ -12,7 +13,7 @@ mod topbar;
 
 use iced::{
     Element, Length,
-    widget::{column, container, row},
+    widget::{column, container, row, stack},
 };
 
 use crate::{
@@ -42,9 +43,15 @@ impl App {
             ..Default::default()
         });
 
-        row![self.view_sidebar(), main_pane]
+        let base: Element<'_, Message> = row![self.view_sidebar(), main_pane]
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
+            .into();
+
+        if let Some(modal) = &self.modal {
+            stack![base, self.view_channel_modal(modal)].into()
+        } else {
+            base
+        }
     }
 }

@@ -156,8 +156,8 @@ impl App {
             default_tip,
         );
 
-        let channel_badge = container(
-            row![
+        let title_btn = icons::hint(
+            button(
                 column![
                     text(channel.to_string())
                         .size(14)
@@ -165,7 +165,17 @@ impl App {
                     text(subtitle).size(11).color(theme::TEXT_MUTED),
                 ]
                 .spacing(2),
-                space().width(Length::Fill),
+            )
+            .on_press(Message::OpenChannelDetails(channel.clone()))
+            .padding([3, 6])
+            .width(Length::Fill)
+            .style(theme::channel_title_button),
+            "Manage routed apps",
+        );
+
+        let channel_badge = container(
+            row![
+                title_btn,
                 default_btn,
                 button(text("x").size(11))
                     .on_press(Message::RemoveChannel(channel.clone()))

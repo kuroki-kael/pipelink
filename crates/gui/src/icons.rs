@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-//! Embedded vector SVG icons and window branding assets for `pipelink-gui`.
+//! Embedded vector SVG icons, window branding assets, and app icon badges.
+
+pub(crate) mod xdg;
 
 use iced::{
-    Color, Length, Theme,
+    Alignment, Background, Border, Color, Element, Length, Theme,
     widget::{
-        self,
+        self, container,
         svg::{Handle, Style as SvgStyle, Svg},
         text,
         tooltip::{Position, Tooltip},
@@ -26,6 +28,10 @@ const HEADPHONES_OUTLINE: &[u8] = include_bytes!("../../../assets/icons/ui/headp
 const HEADPHONES_FILLED: &[u8] = include_bytes!("../../../assets/icons/ui/headphones-filled.svg");
 const SLIDERS: &[u8] = include_bytes!("../../../assets/icons/ui/sliders.svg");
 const SETTINGS: &[u8] = include_bytes!("../../../assets/icons/ui/settings.svg");
+const TRASH: &[u8] = include_bytes!("../../../assets/icons/ui/trash.svg");
+const SEARCH: &[u8] = include_bytes!("../../../assets/icons/ui/search.svg");
+const CLOSE: &[u8] = include_bytes!("../../../assets/icons/ui/close.svg");
+const PLUS: &[u8] = include_bytes!("../../../assets/icons/ui/plus.svg");
 
 /// Decodes the embedded 64×64 RGBA application icon for the OS window manager.
 #[must_use]
@@ -81,9 +87,73 @@ pub(crate) fn nav_settings(selected: bool, size: f32) -> Svg<'static, Theme> {
     tinted_svg(SETTINGS, size, nav_color(selected))
 }
 
+/// Renders a trash/remove vector icon.
+#[must_use]
+pub(crate) fn trash(size: f32, color: Color) -> Svg<'static, Theme> {
+    tinted_svg(TRASH, size, color)
+}
+
+/// Renders a magnifying-glass search vector icon.
+#[must_use]
+pub(crate) fn search(size: f32, color: Color) -> Svg<'static, Theme> {
+    tinted_svg(SEARCH, size, color)
+}
+
+/// Renders a close (`×`) vector icon.
+#[must_use]
+pub(crate) fn close(size: f32, color: Color) -> Svg<'static, Theme> {
+    tinted_svg(CLOSE, size, color)
+}
+
+/// Renders a plus (`+`) vector icon.
+#[must_use]
+pub(crate) fn plus(size: f32, color: Color) -> Svg<'static, Theme> {
+    tinted_svg(PLUS, size, color)
+}
+
+/// Renders an application icon from a pre-resolved SVG/PNG handle or a clean
+/// initial monogram badge fallback.
+pub(crate) fn app_badge<'a, Message: 'a>(
+    name: &str,
+    handle: Option<&Handle>,
+    size: f32,
+) -> Element<'a, Message> {
+    if let Some(svg_handle) = handle {
+        return widget::svg(svg_handle.clone())
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .into();
+    }
+
+    let initial = name
+        .chars()
+        .find(char::is_ascii_alphanumeric)
+        .map_or('?', |c| c.to_ascii_uppercase());
+
+    container(
+        text(initial.to_string())
+            .size((size * 0.55).round())
+            .color(theme::ACCENT_PINK),
+    )
+    .width(Length::Fixed(size))
+    .height(Length::Fixed(size))
+    .align_x(Alignment::Center)
+    .align_y(Alignment::Center)
+    .style(|_| container::Style {
+        background: Some(Background::Color(theme::BG_CELL)),
+        border: Border {
+            color: theme::BORDER_SUBTLE,
+            width: 1.0,
+            radius: 6.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
 /// Wraps `content` in a themed hover tooltip styled consistently with the dark UI.
 pub(crate) fn hint<'a, Message: 'a>(
-    content: impl Into<iced::Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
     label: &'a str,
 ) -> Tooltip<'a, Message> {
     widget::tooltip(

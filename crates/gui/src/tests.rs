@@ -6,8 +6,8 @@
 //! Unit tests for GUI state synchronization.
 
 use pipelink_common::{
-    events::{OutputDeviceInfo, StateEvent},
-    types::{ChannelName, MixName, NodeName},
+    events::{ActiveAppInfo, InstalledAppInfo, OutputDeviceInfo, StateEvent},
+    types::{AppDisplay, AppId, ChannelName, MixName, NodeName},
 };
 
 use crate::{
@@ -105,4 +105,97 @@ fn test_normalize_output_name_strips_verbose_alsa_suffixes() {
 #[test]
 fn test_embedded_window_icon_decodes_cleanly() {
     assert!(icons::window_icon().is_some());
+}
+
+#[test]
+fn test_channel_modal_app_projection_and_picker_filtering() {
+    let (mut app, _) = App::boot();
+    let music = ChannelName::from("Music");
+    let games = ChannelName::from("Games");
+
+    app.snapshot.channels = vec![music.clone(), games.clone()];
+    app.snapshot.apps = vec![
+        ActiveAppInfo {
+            display_name: AppDisplay::from("Spotify"),
+            app_name: "spotify".to_string(),
+            channel: Some(music.clone()),
+            stream_count: 1,
+        },
+        ActiveAppInfo {
+            display_name: AppDisplay::from("Discord"),
+            app_name: "discord".to_string(),
+            channel: Some(games.clone()),
+            stream_count: 2,
+        },
+    ];
+    app.snapshot.app_routes = vec![
+        (AppDisplay::from("Spotify"), music.clone()),
+        (AppDisplay::from("Audacity"), music.clone()),
+    ];
+    app.installed_apps = vec![
+        InstalledAppInfo {
+            id: AppId::from("com.spotify.Client"),
+            name: "Spotify".to_string(),
+            icon: Some("spotify-client".to_string()),
+            exec_bin: Some("spotify".to_string()),
+        },
+        InstalledAppInfo {
+            id: AppId::from("org.mozilla.firefox"),
+            name: "Firefox".to_string(),
+            icon: Some("firefox".to_string()),
+            exec_bin: Some("firefox".to_string()),
+        },
+    ];
+
+    let routed = app.routed_apps_for_channel(&music);
+    assert_eq!(routed.len(), 2);
+    assert_eq!(routed[0].display_name, "Audacity");
+    assert_eq!(routed[0].active_streams, None);
+    assert_eq!(routed[1].display_name, "Spotify");
+    assert_eq!(routed[1].active_streams, Some(1));
+
+    let groups = app.picker_apps(&music, "");
+    assert_eq!(groups.active.len(), 1);
+    assert_eq!(groups.active[0].display_name, "Discord");
+    assert_eq!(groups.active[0].current_channel, Some(games));
+    assert_eq!(groups.installed.len(), 1);
+    assert_eq!(groups.installed[0].display_name, "Firefox");
+
+    let filtered = app.picker_apps(&music, "fire");
+    assert_eq!(filtered.active, []);
+    assert_eq!(filtered.installed.len(), 1);
+    assert_eq!(filtered.installed[0].display_name, "Firefox");
+
+    let _ = app.update(Message::OpenChannelDetails(music.clone()));
+    assert!(app.modal.is_some());
+    let _ = app.update(Message::StateEventReceived(StateEvent::ChannelRemoved {
+        channel: music,
+    }));
+    assert!(app.modal.is_none());
+}
+
+#[test]
+fn test_resolve_app_icons_supports_absolute_svg_and_png_paths() {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let svg_path = manifest_dir.join("../../assets/pipelink.svg");
+    let png_path = manifest_dir.join("../../assets/icons/hicolor/16x16/apps/pipelink.png");
+
+    let apps = vec![
+        InstalledAppInfo {
+            id: AppId::from("svg.app"),
+            name: "SvgApp".to_string(),
+            icon: Some(svg_path.display().to_string()),
+            exec_bin: None,
+        },
+        InstalledAppInfo {
+            id: AppId::from("png.app"),
+            name: "PngApp".to_string(),
+            icon: Some(png_path.display().to_string()),
+            exec_bin: None,
+        },
+    ];
+
+    let resolved = icons::xdg::resolve_app_icons(&apps);
+    assert!(resolved.contains_key("svg.app"));
+    assert!(resolved.contains_key("png.app"));
 }

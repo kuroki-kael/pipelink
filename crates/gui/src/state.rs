@@ -6,14 +6,21 @@
 //! Core `iced` application state, messages, and update loop.
 
 mod actions;
+mod apps;
 mod events;
+mod output;
 
-use std::{collections::HashMap, fmt, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
-use iced::{Element, Task};
+pub(crate) use actions::InstalledAppsPayload;
+pub(crate) use apps::{PickerAppEntry, RoutedChannelApp};
+use iced::{Element, Task, widget::svg};
+pub(crate) use output::OutputOption;
+#[cfg(test)]
+pub(crate) use output::normalize_output_name;
 use pipelink_common::{
-    events::{GraphSnapshot, InstalledAppInfo, MixRouteInfo, OutputDeviceInfo, StateEvent},
-    types::{ChannelName, MixName},
+    events::{GraphSnapshot, InstalledAppInfo, MixRouteInfo, StateEvent},
+    types::{AppDisplay, ChannelName, MixName},
 };
 use pipelink_ipc::UnixSocketClient;
 
@@ -25,59 +32,11 @@ pub(crate) enum NavPage {
     Settings,
 }
 
-/// Wrapper allowing [`OutputDeviceInfo`] to render cleanly inside an
-/// `iced::widget::pick_list`.
+/// Active Channel Detail modal state and optional `+ Add app` search query.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OutputOption(pub(crate) OutputDeviceInfo);
-
-impl fmt::Display for OutputOption {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&normalize_output_name(self.0.display_name()))
-    }
-}
-
-/// Normalizes verbose ALSA/`PipeWire` sink descriptions into compact human-readable
-/// labels.
-pub(crate) fn normalize_output_name(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return "Unknown output".to_string();
-    }
-
-    let cleaned = if !trimmed.contains(' ')
-        && (trimmed.starts_with("alsa_output.") || trimmed.starts_with("alsa_input."))
-    {
-        let without_dir = trimmed
-            .strip_prefix("alsa_output.")
-            .or_else(|| trimmed.strip_prefix("alsa_input."))
-            .unwrap_or(trimmed);
-        let without_bus = without_dir
-            .strip_prefix("usb-")
-            .or_else(|| without_dir.strip_prefix("pci-"))
-            .unwrap_or(without_dir);
-        let base = without_bus.split('.').next().unwrap_or(without_bus);
-        let base = base.strip_suffix("-00").unwrap_or(base);
-        base.replace('_', " ")
-    } else {
-        trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
-
-    for suffix in [
-        " Digital Stereo (IEC958)",
-        " Analog Stereo",
-        " Digital Stereo",
-        " Pro Audio",
-        " Stereo",
-    ] {
-        if let Some(prefix) = cleaned.strip_suffix(suffix) {
-            let candidate = prefix.trim();
-            if !candidate.is_empty() {
-                return candidate.to_string();
-            }
-        }
-    }
-
-    cleaned
+pub(crate) struct ChannelModalState {
+    pub(crate) channel: ChannelName,
+    pub(crate) picker_query: Option<String>,
 }
 
 /// Root GUI state synchronized with the `pipelink` daemon via IPC.
@@ -87,11 +46,13 @@ pub(crate) struct App {
     pub(crate) page: NavPage,
     pub(crate) snapshot: GraphSnapshot,
     pub(crate) installed_apps: Vec<InstalledAppInfo>,
+    pub(crate) icon_handles: HashMap<String, svg::Handle>,
     pub(crate) last_error: Option<String>,
     pub(crate) creating_channel: bool,
     pub(crate) new_channel_name: String,
     pub(crate) creating_mix: bool,
     pub(crate) new_mix_name: String,
+    pub(crate) modal: Option<ChannelModalState>,
     pub(crate) gain_throttle: HashMap<(ChannelName, MixName), Instant>,
 }
 
@@ -101,7 +62,7 @@ pub(crate) enum Message {
     DaemonConnected,
     DaemonDisconnected,
     SnapshotLoaded(Result<GraphSnapshot, String>),
-    InstalledAppsLoaded(Result<Vec<InstalledAppInfo>, String>),
+    InstalledAppsLoaded(Result<InstalledAppsPayload, String>),
     StateEventReceived(StateEvent),
     MutationFinished(Result<(), String>),
     SelectPage(NavPage),
@@ -132,6 +93,15 @@ pub(crate) enum Message {
     NewChannelNameChanged(String),
     SubmitCreateChannel,
     RemoveChannel(ChannelName),
+    OpenChannelDetails(ChannelName),
+    CloseChannelDetails,
+    ToggleAppPicker,
+    AppSearchChanged(String),
+    RouteApp {
+        app: AppDisplay,
+        channel: ChannelName,
+    },
+    UnrouteApp(AppDisplay),
     OpenCreateMix,
     CancelCreateMix,
     NewMixNameChanged(String),
@@ -155,11 +125,13 @@ impl App {
             page: NavPage::Mixes,
             snapshot: GraphSnapshot::default(),
             installed_apps: Vec::new(),
+            icon_handles: HashMap::new(),
             last_error: None,
             creating_channel: false,
             new_channel_name: String::new(),
             creating_mix: false,
             new_mix_name: String::new(),
+            modal: None,
             gain_throttle: HashMap::new(),
         };
 
@@ -168,17 +140,17 @@ impl App {
 
     pub(crate) fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::DaemonConnected => {
-                self.connected = true;
-                self.last_error = None;
+            Message::DaemonConnected | Message::RefreshSnapshot => {
+                if matches!(message, Message::DaemonConnected) {
+                    self.connected = true;
+                    self.last_error = None;
+                }
                 return Task::batch([
                     actions::fetch_snapshot(self.client.clone()),
                     actions::fetch_installed_apps(self.client.clone()),
                 ]);
             },
-            Message::DaemonDisconnected => {
-                self.connected = false;
-            },
+            Message::DaemonDisconnected => self.connected = false,
             Message::SnapshotLoaded(Ok(snapshot)) => {
                 self.connected = true;
                 self.snapshot = snapshot;
@@ -186,8 +158,9 @@ impl App {
             Message::SnapshotLoaded(Err(err)) | Message::MutationFinished(Err(err)) => {
                 self.last_error = Some(err);
             },
-            Message::InstalledAppsLoaded(Ok(apps)) => {
-                self.installed_apps = apps;
+            Message::InstalledAppsLoaded(Ok(payload)) => {
+                self.installed_apps = payload.apps;
+                self.icon_handles = payload.icons;
             },
             Message::InstalledAppsLoaded(Err(_)) | Message::MutationFinished(Ok(())) => {},
             Message::StateEventReceived(event) => {
@@ -209,9 +182,7 @@ impl App {
                 channel,
                 mix,
                 active,
-            } => {
-                return actions::toggle_route(self.client.clone(), channel, mix, active);
-            },
+            } => return actions::toggle_route(self.client.clone(), channel, mix, active),
             Message::GainChanged {
                 channel,
                 mix,
@@ -224,9 +195,20 @@ impl App {
                 channel,
                 mix,
                 muted,
-            } => {
-                return actions::set_mute(self.client.clone(), channel, mix, muted);
+            } => return actions::set_mute(self.client.clone(), channel, mix, muted),
+            Message::RemoveChannel(name) => {
+                return actions::remove_channel(self.client.clone(), name);
             },
+            Message::RemoveMix(name) => return actions::remove_mix(self.client.clone(), name),
+            Message::DismissError => self.last_error = None,
+            other => return self.update_overlays_and_forms(other),
+        }
+
+        Task::none()
+    }
+
+    fn update_overlays_and_forms(&mut self, message: Message) -> Task<Message> {
+        match message {
             Message::OpenCreateChannel => {
                 self.creating_channel = true;
                 self.new_channel_name.clear();
@@ -237,9 +219,6 @@ impl App {
             },
             Message::NewChannelNameChanged(name) => self.new_channel_name = name,
             Message::SubmitCreateChannel => return self.submit_create_channel(),
-            Message::RemoveChannel(name) => {
-                return actions::remove_channel(self.client.clone(), name);
-            },
             Message::OpenCreateMix => {
                 self.creating_mix = true;
                 self.new_mix_name.clear();
@@ -250,14 +229,34 @@ impl App {
             },
             Message::NewMixNameChanged(name) => self.new_mix_name = name,
             Message::SubmitCreateMix => return self.submit_create_mix(),
-            Message::RemoveMix(name) => return actions::remove_mix(self.client.clone(), name),
-            Message::RefreshSnapshot => {
-                return Task::batch([
-                    actions::fetch_snapshot(self.client.clone()),
-                    actions::fetch_installed_apps(self.client.clone()),
-                ]);
+            Message::OpenChannelDetails(channel) => {
+                self.modal = Some(ChannelModalState {
+                    channel,
+                    picker_query: None,
+                });
+                return actions::fetch_installed_apps(self.client.clone());
             },
-            Message::DismissError => self.last_error = None,
+            Message::CloseChannelDetails => self.modal = None,
+            Message::ToggleAppPicker => {
+                if let Some(modal) = &mut self.modal {
+                    modal.picker_query = modal.picker_query.is_none().then(String::new);
+                }
+            },
+            Message::AppSearchChanged(query) => {
+                if let Some(modal) = &mut self.modal {
+                    modal.picker_query = Some(query);
+                }
+            },
+            Message::RouteApp { app, channel } => {
+                if let Some(modal) = &mut self.modal {
+                    modal.picker_query = None;
+                }
+                return actions::route_app(self.client.clone(), app, channel);
+            },
+            Message::UnrouteApp(app) => {
+                return actions::unroute_app(self.client.clone(), app);
+            },
+            _ => {},
         }
 
         Task::none()

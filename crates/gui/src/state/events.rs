@@ -48,11 +48,7 @@ impl App {
                 false
             },
             StateEvent::ChannelRemoved { channel } => {
-                self.snapshot.channels.retain(|c| c != &channel);
-                self.snapshot.routes.retain(|r| r.channel != channel);
-                self.snapshot
-                    .app_routes
-                    .retain(|(_, ch)| !ch.eq_ignore_ascii_case(&channel));
+                self.on_channel_removed(&channel);
                 false
             },
             StateEvent::MixAdded { mix } => {
@@ -98,8 +94,35 @@ impl App {
                 self.last_error = Some(error);
                 false
             },
-            StateEvent::AppRouted { .. } | StateEvent::AppUnrouted { .. } => true,
+            StateEvent::AppRouted { app, channel } => {
+                self.snapshot
+                    .app_routes
+                    .retain(|(existing, _)| !existing.eq_ignore_ascii_case(&app));
+                self.snapshot.app_routes.push((app, channel));
+                true
+            },
+            StateEvent::AppUnrouted { app } => {
+                self.snapshot
+                    .app_routes
+                    .retain(|(existing, _)| !existing.eq_ignore_ascii_case(&app));
+                true
+            },
             StateEvent::ChannelLayerSwitched { .. } | _ => false,
+        }
+    }
+
+    fn on_channel_removed(&mut self, channel: &ChannelName) {
+        self.snapshot.channels.retain(|c| c != channel);
+        self.snapshot.routes.retain(|r| r.channel != *channel);
+        self.snapshot
+            .app_routes
+            .retain(|(_, ch)| !ch.eq_ignore_ascii_case(channel));
+        if self
+            .modal
+            .as_ref()
+            .is_some_and(|m| m.channel.eq_ignore_ascii_case(channel))
+        {
+            self.modal = None;
         }
     }
 

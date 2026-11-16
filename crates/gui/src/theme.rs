@@ -228,3 +228,76 @@ pub(crate) fn accent_slider(_theme: &Theme, _status: slider::Status) -> slider::
         },
     }
 }
+
+pub(crate) fn modal_card_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(BG_SIDEBAR)),
+        border: Border {
+            color: BORDER_SUBTLE,
+            width: 1.0,
+            radius: 12.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+pub(crate) fn backdrop_button(_theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.62))),
+        ..Default::default()
+    }
+}
+
+pub(crate) fn channel_title_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    button::Style {
+        background: Some(Background::Color(if hovered {
+            BG_HOVER
+        } else {
+            Color::TRANSPARENT
+        })),
+        text_color: TEXT_PRIMARY,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 6.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+pub(crate) fn danger_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    pill_button(
+        Color::from_rgba(
+            ACCENT_RED.r,
+            ACCENT_RED.g,
+            ACCENT_RED.b,
+            if hovered { 0.28 } else { 0.16 },
+        ),
+        ACCENT_RED,
+        ACCENT_RED,
+    )
+}
+
+pub(crate) fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    pill_button(
+        if hovered { BRAND_PINK } else { ACCENT_PINK },
+        BG_APP,
+        ACCENT_PINK,
+    )
+}
+
+fn pill_button(bg: Color, text_color: Color, border_color: Color) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(bg)),
+        text_color,
+        border: Border {
+            color: border_color,
+            width: 1.0,
+            radius: 6.0.into(),
+        },
+        ..Default::default()
+    }
+}

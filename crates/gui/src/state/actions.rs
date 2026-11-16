@@ -5,13 +5,18 @@
 
 //! Asynchronous IPC actions dispatched from GUI updates.
 
+mod apps;
 mod routes;
 
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
-use iced::Task;
+pub(super) use apps::{route_app, unroute_app};
+use iced::{Task, widget::svg};
 use pipelink_common::{
-    events::{ControlEvent, ControlReply, StateEvent},
+    events::{ControlEvent, ControlReply, InstalledAppInfo, StateEvent},
     types::{ChannelName, MixName},
 };
 use pipelink_ipc::{ControlClient, UnixSocketClient};
@@ -21,6 +26,15 @@ pub(super) use routes::{
 };
 
 use super::{App, Message};
+use crate::icons;
+
+/// Combined result of fetching installed `.desktop` apps and resolving their XDG icons
+/// off the GUI thread.
+#[derive(Debug, Clone)]
+pub(crate) struct InstalledAppsPayload {
+    pub(crate) apps: Vec<InstalledAppInfo>,
+    pub(crate) icons: HashMap<String, svg::Handle>,
+}
 
 const GAIN_THROTTLE_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -106,11 +120,19 @@ pub(super) fn fetch_snapshot(client: UnixSocketClient) -> Task<Message> {
 pub(super) fn fetch_installed_apps(client: UnixSocketClient) -> Task<Message> {
     Task::perform(
         async move {
-            match client.query(ControlEvent::ListInstalledApps).await {
-                Ok(ControlReply::InstalledApps { apps }) => Ok(apps),
-                Ok(other) => Err(format!("Unexpected daemon reply: {other:?}")),
-                Err(err) => Err(err.to_string()),
-            }
+            let apps = match client.query(ControlEvent::ListInstalledApps).await {
+                Ok(ControlReply::InstalledApps { apps }) => apps,
+                Ok(other) => return Err(format!("Unexpected daemon reply: {other:?}")),
+                Err(err) => return Err(err.to_string()),
+            };
+
+            let resolve_input = apps.clone();
+            let icons =
+                tokio::task::spawn_blocking(move || icons::xdg::resolve_app_icons(&resolve_input))
+                    .await
+                    .unwrap_or_default();
+
+            Ok(InstalledAppsPayload { apps, icons })
         },
         Message::InstalledAppsLoaded,
     )
