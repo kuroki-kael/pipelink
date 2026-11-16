@@ -87,6 +87,8 @@ pub struct GraphSnapshot {
     pub mixes: Vec<MixName>,
     /// Globally active mix driving the audio output, if any.
     pub active_mix: Option<MixName>,
+    /// Current `WirePlumber` configured default audio sink, if known.
+    pub default_sink: Option<NodeName>,
     /// Full channel-to-mix matrix cells.
     pub routes: Vec<MixRouteInfo>,
     /// Available `PipeWire` audio output sinks.

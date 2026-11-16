@@ -31,6 +31,8 @@ pub struct AudioGraph {
     pub outputs: Vec<OutputDevice>,
     /// Currently selected output sink node name, if any.
     pub selected_output: Option<NodeName>,
+    /// Currently configured `WirePlumber` default audio sink, if reported.
+    pub default_sink: Option<NodeName>,
     /// Stereo link pair connecting the active mix source to the selected output.
     pub active_output_links: StereoLink,
     /// Guards against dispatching duplicate output link requests while awaiting

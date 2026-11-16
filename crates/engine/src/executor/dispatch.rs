@@ -128,6 +128,7 @@ impl Executor {
                 self.on_mix_removal_failed(name, &reason);
             },
             PipewireEvent::DefaultSinkSet { node_name } => {
+                self.graph.default_sink = Some(node_name.clone());
                 let _ = self
                     .state_tx
                     .send(StateEvent::DefaultSinkChanged { sink: node_name });

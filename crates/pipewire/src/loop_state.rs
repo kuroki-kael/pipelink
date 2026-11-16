@@ -19,12 +19,13 @@ use tracing::{debug, error, warn};
 use crate::{Command, PipewireEvent, factory, module_handle::ModuleHandle};
 
 type StreamListenerEntry = (Node, Box<dyn Any>);
+type MetadataEntry = (Metadata, Box<dyn Any>);
 
 #[derive(Default)]
 pub(crate) struct LoopState {
     active_nodes: RefCell<HashMap<ChannelName, Node>>,
     active_modules: RefCell<HashMap<MixName, ModuleHandle>>,
-    default_metadata: RefCell<Option<Metadata>>,
+    default_metadata: RefCell<Option<MetadataEntry>>,
     stream_listeners: RefCell<HashMap<NodeId, StreamListenerEntry>>,
 }
 
@@ -78,7 +79,7 @@ impl LoopState {
                 label,
             } => {
                 // set target.object to target channel serial on the stream node
-                if let Some(metadata) = self.default_metadata.borrow().as_ref() {
+                if let Some((metadata, _)) = self.default_metadata.borrow().as_ref() {
                     let serial_str = target_serial.to_string();
                     metadata.set_property(
                         node_id.0,
@@ -94,7 +95,7 @@ impl LoopState {
                 }
             },
             Command::ClearNodeRoute { node_id } => {
-                if let Some(metadata) = self.default_metadata.borrow().as_ref() {
+                if let Some((metadata, _)) = self.default_metadata.borrow().as_ref() {
                     metadata.set_property(node_id.0, "target.object", None, None);
                     let _ = core.sync(0);
                     debug!("target.object cleared for {}", node_id);
@@ -147,7 +148,7 @@ impl LoopState {
         node_name: NodeName,
         event_tx: &UnboundedSender<PipewireEvent>,
     ) {
-        if let Some(metadata) = self.default_metadata.borrow().as_ref() {
+        if let Some((metadata, _)) = self.default_metadata.borrow().as_ref() {
             let payload = serde_json::json!({ "name": node_name }).to_string();
             metadata.set_property(
                 0,

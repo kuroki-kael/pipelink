@@ -156,6 +156,7 @@ fn build_graph_snapshot(graph: &AudioGraph, config: &ConfigGraph) -> GraphSnapsh
         channels: graph.channels().iter().map(|c| c.name.clone()).collect(),
         mixes: graph.mixes().iter().map(|m| m.name.clone()).collect(),
         active_mix: graph.active_mix.clone(),
+        default_sink: graph.default_sink.clone(),
         routes: collect_mix_routes(graph),
         outputs: collect_outputs(graph),
         apps: collect_active_apps(graph),

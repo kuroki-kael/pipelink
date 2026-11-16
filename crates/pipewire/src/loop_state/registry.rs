@@ -42,7 +42,23 @@ impl LoopState {
                     match registry.bind::<Metadata, _>(obj) {
                         Ok(metadata) => {
                             debug!("Default metadata bound");
-                            *self.default_metadata.borrow_mut() = Some(metadata);
+                            let tx = event_tx.clone();
+                            let listener = metadata
+                                .add_listener_local()
+                                .property(move |subject, key, _type, value| {
+                                    if subject == 0
+                                        && key == Some("default.configured.audio.sink")
+                                        && let Some(sink) = value.and_then(parse_metadata_sink_name)
+                                    {
+                                        let _ = tx.send(PipewireEvent::DefaultSinkSet {
+                                            node_name: NodeName::from(sink),
+                                        });
+                                    }
+                                    0
+                                })
+                                .register();
+                            *self.default_metadata.borrow_mut() =
+                                Some((metadata, Box::new(listener)));
                             let _ = event_tx.send(PipewireEvent::MetadataAppeared {
                                 id: GlobalId::from(obj.id),
                             });
@@ -174,4 +190,12 @@ impl LoopState {
         self.stream_listeners.borrow_mut().remove(&id.0);
         let _ = event_tx.send(PipewireEvent::GlobalRemoved { id });
     }
+}
+
+fn parse_metadata_sink_name(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()?
+        .get("name")?
+        .as_str()
+        .map(ToString::to_string)
 }
