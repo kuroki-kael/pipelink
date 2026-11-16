@@ -2,11 +2,15 @@
  * Copyright (c) 2026 Kuroki-Kael / PipeLink Contributors.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-use pipelink_engine::{ConfigGraph, executor::Executor};
+use pipelink_engine::{ConfigGraph, StoragePaths, executor::Executor};
+use tokio::{
+    signal::unix::{SignalKind, signal},
+    sync::watch,
+};
 
 use crate::ipc::{handle_client, start_server};
 
-/// Runs the audio routing daemon until the executor stops.
+/// Runs the audio routing daemon until the executor stops or receives `SIGINT`/`SIGTERM`.
 ///
 /// # Errors
 /// Returns an error if the executor cannot be created or fails while running.
@@ -21,9 +25,27 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let state_broadcaster = state_tx.clone();
 
-    let mut executor = Executor::new(ConfigGraph::default(), control_rx, state_tx)?;
+    let mut executor = match StoragePaths::discover() {
+        Some(paths) => {
+            let config = paths.load_config();
+            let state = paths.load_state();
+            Executor::with_persistence(config, &state, Some(paths), control_rx, state_tx)?
+        },
+        None => Executor::new(ConfigGraph::default(), control_rx, state_tx)?,
+    };
 
     let (listener, socket_guard) = start_server().await?;
+
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigint.recv() => {},
+            _ = sigterm.recv() => {},
+        }
+        let _ = shutdown_tx.send(true);
+    });
 
     tokio::spawn(async move {
         loop {
@@ -51,7 +73,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         // midi_handler::init();
     }
 
-    executor.run().await?;
+    executor.run(shutdown_rx).await?;
 
     // The socket of the daemon is gone when the daemon ends.
     drop(socket_guard);
