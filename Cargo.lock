@@ -485,7 +485,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipelink"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "pipelink-common",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "pipelink-common"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "pipelink-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pipelink-common",
  "pipelink-jack",
@@ -525,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "pipelink-jack"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "jack",
  "pipelink-common",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "pipelink-pw"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pipelink-common",
  "pipewire",
@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "pipelink-resolver"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pipelink-common",
  "tracing",
