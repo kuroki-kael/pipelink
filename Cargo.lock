@@ -538,6 +538,7 @@ dependencies = [
  "pipelink-common",
  "pipewire",
  "pipewire-sys",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",

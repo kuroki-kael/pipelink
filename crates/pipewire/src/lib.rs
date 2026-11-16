@@ -15,7 +15,7 @@ pub use events::PipewireEvent;
 pub(crate) use loop_state::LoopState;
 use pipelink_common::{
     graph::{channel::Channel, link::StereoLink, mix::Mix},
-    types::{ChannelName, LinkId, MixName, NodeId, NodeSerial},
+    types::{ChannelName, LinkId, MixName, NodeId, NodeName, NodeSerial},
 };
 pub use pw_loop::PipewireService;
 
@@ -48,6 +48,11 @@ pub enum Command {
     /// clears `target.object` metadata
     ClearNodeRoute {
         node_id: NodeId,
+    },
+
+    /// Sets `default.configured.audio.sink` in `PipeWire`'s `default` metadata.
+    SetDefaultSink {
+        node_name: NodeName,
     },
 
     CreateChannel {

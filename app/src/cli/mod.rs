@@ -24,7 +24,7 @@ use clap::{
 };
 use mix::MixAction;
 use output::OutputAction;
-use pipelink_common::events::{ControlEvent, ControlReply};
+use pipelink_common::events::{ControlEvent, ControlReply, StateEvent};
 use route::RouteAction;
 
 /// The parsed command line.
@@ -71,6 +71,13 @@ pub(crate) enum Command {
     Output {
         #[command(subcommand)]
         action: OutputAction,
+    },
+    /// Set WirePlumber's default audio sink (channel or output device)
+    #[allow(clippy::doc_markdown)]
+    #[command(visible_alias = "wp-default")]
+    DefaultSink {
+        /// Channel name or output node name, description, or nick
+        target: String,
     },
 }
 
@@ -189,6 +196,32 @@ async fn run_command(command: Command) {
         Command::Channel { action } => channel::run(action).await,
         Command::Mix { action } => mix::run(action).await,
         Command::Output { action } => output::run(action).await,
+        Command::DefaultSink { target } => set_default_sink(target).await,
+    }
+}
+
+/// Sets `WirePlumber`'s default audio sink via the daemon.
+async fn set_default_sink(target: String) {
+    let req = ControlEvent::SetDefaultSink {
+        sink: target.clone(),
+    };
+    let reply = crate::ipc::send_mutation(req, |event| {
+        matches!(
+            event,
+            StateEvent::DefaultSinkChanged { .. } | StateEvent::DefaultSinkOperationFailed { .. }
+        )
+    })
+    .await;
+
+    match reply {
+        Ok(StateEvent::DefaultSinkChanged { sink }) => {
+            println!("WirePlumber default audio sink set to '{sink}'");
+        },
+        Ok(StateEvent::DefaultSinkOperationFailed { error }) => {
+            fail(format!("failed to set default sink '{target}': {error}"));
+        },
+        Ok(other) => fail(format!("unexpected answer: {other:?}")),
+        Err(e) => fail(e),
     }
 }
 

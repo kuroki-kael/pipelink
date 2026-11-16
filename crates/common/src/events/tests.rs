@@ -251,6 +251,12 @@ fn test_output_events_and_replies_round_trip() {
             mix: MixName::from("stream"),
             error: "mix not found".to_string(),
         },
+        StateEvent::DefaultSinkChanged {
+            sink: NodeName::from("pipelink.channel.System"),
+        },
+        StateEvent::DefaultSinkOperationFailed {
+            error: "default metadata not bound".to_string(),
+        },
     ] {
         let state_json = serde_json::to_string(&state).unwrap();
         assert_eq!(
@@ -258,4 +264,13 @@ fn test_output_events_and_replies_round_trip() {
             state
         );
     }
+
+    let set_default = ControlEvent::SetDefaultSink {
+        sink: "System".to_string(),
+    };
+    let default_json = serde_json::to_string(&set_default).unwrap();
+    assert_eq!(
+        serde_json::from_str::<ControlEvent>(&default_json).unwrap(),
+        set_default
+    );
 }

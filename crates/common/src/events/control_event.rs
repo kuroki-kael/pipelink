@@ -108,4 +108,9 @@ pub enum ControlEvent {
         /// Output `node.name`, description, or nick.
         output: String,
     },
+    /// Sets `WirePlumber`'s default audio sink (`default.configured.audio.sink`).
+    SetDefaultSink {
+        /// Channel name or output `node.name`, description, or nick.
+        sink: String,
+    },
 }

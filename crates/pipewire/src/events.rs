@@ -137,4 +137,16 @@ pub enum PipewireEvent {
         /// Human readable reason of the failure.
         reason: String,
     },
+
+    /// `default.configured.audio.sink` was updated on `PipeWire`'s `default` metadata.
+    DefaultSinkSet {
+        /// Configured sink `node.name`.
+        node_name: NodeName,
+    },
+
+    /// Updating `default.configured.audio.sink` failed.
+    DefaultSinkFailed {
+        /// Human readable reason of the failure.
+        reason: String,
+    },
 }

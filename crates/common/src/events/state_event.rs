@@ -151,4 +151,14 @@ pub enum StateEvent {
         /// Reason the activation failed.
         error: String,
     },
+    /// `WirePlumber` default audio sink was updated.
+    DefaultSinkChanged {
+        /// Newly configured default sink `node.name`.
+        sink: NodeName,
+    },
+    /// Updating `WirePlumber`'s default audio sink failed.
+    DefaultSinkOperationFailed {
+        /// Reason the default sink update failed.
+        error: String,
+    },
 }
