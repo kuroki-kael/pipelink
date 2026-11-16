@@ -1,6 +1,8 @@
 [package]
 name = "pipelink-engine"
 version.workspace = true
+description = "Audio routing orchestration engine and XDG persistence for PipeLink"
+repository.workspace = true
 keywords.workspace = true
 edition.workspace = true
 rust-version.workspace = true

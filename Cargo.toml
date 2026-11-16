@@ -29,11 +29,11 @@ must_use_candidate = "allow"
 
 [workspace.dependencies]
 # Internal
-pipelink-engine = { path = "crates/engine" }
-pipelink-jack = { path = "crates/jack" }
-pipelink-pw = { path = "crates/pipewire" }
-pipelink-resolver = { path = "crates/resolver" }
-pipelink-common = { path = "crates/common" }
+pipelink-engine = { version = "0.1.0", path = "crates/engine" }
+pipelink-jack = { version = "0.1.0", path = "crates/jack" }
+pipelink-pw = { version = "0.1.0", path = "crates/pipewire" }
+pipelink-resolver = { version = "0.1.0", path = "crates/resolver" }
+pipelink-common = { version = "0.1.0", path = "crates/common" }
 
 # Audio
 jack = { version = "0.14.0" }

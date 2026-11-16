@@ -1,6 +1,8 @@
 [package]
 name = "pipelink-common"
 version.workspace = true
+description = "Shared domain types, IPC events, and audio graph models for PipeLink"
+repository.workspace = true
 keywords.workspace = true
 edition.workspace = true
 rust-version.workspace = true

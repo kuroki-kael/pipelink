@@ -1,6 +1,8 @@
 [package]
 name = "pipelink-resolver"
 version.workspace = true
+description = "Application and node matching rules for PipeLink audio routing"
+repository.workspace = true
 keywords.workspace = true
 edition.workspace = true
 rust-version.workspace = true

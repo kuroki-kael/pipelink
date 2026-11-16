@@ -1,6 +1,8 @@
 [package]
 name = "pipelink-pw"
 version.workspace = true
+description = "PipeWire graph discovery, linking, and metadata backend for PipeLink"
+repository.workspace = true
 keywords.workspace = true
 edition.workspace = true
 rust-version.workspace = true
