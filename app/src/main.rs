@@ -6,10 +6,6 @@
 mod cli;
 mod daemon;
 
-#[cfg(feature = "gui")]
-mod gui;
-
-#[tokio::main]
-async fn main() {
-    cli::run().await;
+fn main() {
+    cli::run();
 }

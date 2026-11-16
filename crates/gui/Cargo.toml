@@ -1,0 +1,20 @@
+[package]
+name = "pipelink-gui"
+version.workspace = true
+description = "WaveLink-inspired iced graphical audio routing frontend for PipeLink"
+repository.workspace = true
+keywords.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+iced = { workspace = true }
+pipelink-common = { workspace = true }
+pipelink-ipc = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

@@ -13,6 +13,7 @@ authors.workspace = true
 # Internal
 pipelink-common = { workspace = true }
 pipelink-engine = { workspace = true }
+pipelink-gui = { workspace = true, optional = true }
 pipelink-ipc = { workspace = true }
 
 clap = { workspace = true }
@@ -27,7 +28,7 @@ workspace = true
 [features]
 default = []
 api = []
-gui = []
+gui = ["dep:pipelink-gui"]
 full = []
 web = []
 midi = []

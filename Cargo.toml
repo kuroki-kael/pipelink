@@ -30,6 +30,7 @@ must_use_candidate = "allow"
 [workspace.dependencies]
 # Internal
 pipelink-engine = { version = "0.1.1", path = "crates/engine" }
+pipelink-gui = { version = "0.1.1", path = "crates/gui" }
 pipelink-ipc = { version = "0.1.1", path = "crates/ipc" }
 pipelink-jack = { version = "0.1.1", path = "crates/jack" }
 pipelink-pw = { version = "0.1.1", path = "crates/pipewire" }
@@ -63,6 +64,9 @@ rtrb = { version = "0.4.1" }
 parking_lot = { version = "0.13.0" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154" }
+
+# GUI
+iced = { version = "0.14", features = ["tokio", "svg"] }
 
 [profile.dev]
 opt-level = 0

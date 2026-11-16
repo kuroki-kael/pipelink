@@ -82,7 +82,7 @@ pub(crate) enum Command {
 }
 
 /// Runs the cli.
-pub(crate) async fn run() {
+pub(crate) fn run() {
     let args = Cli::parse();
 
     if args.gui && args.status {
@@ -94,12 +94,14 @@ pub(crate) async fn run() {
             if args.gui || args.status {
                 fail("--gui and --status cannot be combined with a command");
             }
-            run_command(command).await;
+            run_async(run_command(command));
         },
         None if args.gui => {
             #[cfg(feature = "gui")]
             {
-                crate::gui::run().await;
+                if let Err(err) = pipelink_gui::run() {
+                    fail(format!("GUI exited with error: {err}"));
+                }
             }
             #[cfg(not(feature = "gui"))]
             {
@@ -107,11 +109,19 @@ pub(crate) async fn run() {
                 std::process::exit(1);
             }
         },
-        None if args.status => print_status().await,
+        None if args.status => run_async(print_status()),
         None => {
             let _ = Cli::command().print_help();
             std::process::exit(2);
         },
+    }
+}
+
+/// Runs an asynchronous CLI or daemon future inside a fresh Tokio runtime.
+fn run_async(fut: impl std::future::Future<Output = ()>) {
+    match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt.block_on(fut),
+        Err(err) => fail(format!("failed to start async runtime: {err}")),
     }
 }
 
