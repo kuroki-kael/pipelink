@@ -75,7 +75,8 @@ pub struct AudioGraph {
     pub selected_output: Option<NodeName>,
     /// Stereo link pair connecting the active mix source to the selected output.
     pub active_output_links: StereoLink,
-    /// Guards against dispatching duplicate output link requests while awaiting `PipeWire`.
+    /// Guards against dispatching duplicate output link requests while awaiting
+    /// `PipeWire`.
     pub output_links_requested: bool,
     /// `PipeWire` node id of the `PipeLink` `JACK` client, once discovered.
     pub jack_node_id: Option<NodeId>,
@@ -132,14 +133,11 @@ impl AudioGraph {
 
     /// Returns the column index of `mix` (case-insensitive), if present.
     pub fn mix_index(&self, mix: &MixName) -> Option<usize> {
-        self.mixes
-            .iter()
-            .position(|m| m.name == *mix)
-            .or_else(|| {
-                self.mixes
-                    .iter()
-                    .position(|m| m.name.eq_ignore_ascii_case(mix))
-            })
+        self.mixes.iter().position(|m| m.name == *mix).or_else(|| {
+            self.mixes
+                .iter()
+                .position(|m| m.name.eq_ignore_ascii_case(mix))
+        })
     }
 
     /// Resolves `channel` case-insensitively to its stored canonical name.
@@ -477,9 +475,20 @@ mod tests {
         assert_eq!(graph.channels()[0].name, ch("Music"));
         assert_eq!(graph.mixes()[0].name, mix("Personal"));
         assert_eq!(graph.resolve_channel_name(&ch("music")), Some(ch("Music")));
-        assert_eq!(graph.resolve_mix_name(&mix("personal")), Some(mix("Personal")));
+        assert_eq!(
+            graph.resolve_mix_name(&mix("personal")),
+            Some(mix("Personal"))
+        );
 
-        graph.get_route_mut(&ch("music"), &mix("personal")).unwrap().active = true;
-        assert!(graph.get_route(&ch("MUSIC"), &mix("Personal")).unwrap().active);
+        graph
+            .get_route_mut(&ch("music"), &mix("personal"))
+            .unwrap()
+            .active = true;
+        assert!(
+            graph
+                .get_route(&ch("MUSIC"), &mix("Personal"))
+                .unwrap()
+                .active
+        );
     }
 }
