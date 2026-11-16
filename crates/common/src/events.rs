@@ -10,8 +10,12 @@ mod control_reply;
 mod state_event;
 
 pub use control_event::ControlEvent;
-pub use control_reply::{ActiveAppInfo, ControlReply, OutputDeviceInfo};
+pub use control_reply::{
+    ActiveAppInfo, ControlReply, GraphSnapshot, InstalledAppInfo, MixRouteInfo, OutputDeviceInfo,
+};
 pub use state_event::StateEvent;
 
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod tests;

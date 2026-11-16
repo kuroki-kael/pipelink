@@ -58,7 +58,7 @@ struct CacheEntry {
 #[derive(Debug)]
 pub struct ProcessResolver {
     config: ResolverConfig,
-    desktop_db: Arc<RwLock<DesktopDatabase>>,
+    pub(crate) desktop_db: Arc<RwLock<DesktopDatabase>>,
     cache: RwLock<HashMap<Pid, CacheEntry>>,
 }
 

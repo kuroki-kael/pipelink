@@ -113,4 +113,10 @@ pub enum ControlEvent {
         /// Channel name or output `node.name`, description, or nick.
         sink: String,
     },
+    /// Requests a full snapshot of the routing graph, mixer levels, outputs, and apps.
+    GetGraphSnapshot,
+    /// Requests all installed desktop applications known to the resolver.
+    ListInstalledApps,
+    /// Subscribes to the continuous stream of daemon state events.
+    SubscribeState,
 }

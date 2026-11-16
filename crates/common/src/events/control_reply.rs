@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     graph::output::preferred_output_label,
-    types::{AppDisplay, ChannelName, MixName, NodeName},
+    types::{AppDisplay, AppId, ChannelName, MixName, NodeName},
 };
 
 /// Summary of an active resolved application in the graph.
@@ -50,6 +50,53 @@ impl OutputDeviceInfo {
     }
 }
 
+/// State of a single `(channel, mix)` route cell inside a graph snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MixRouteInfo {
+    /// Source channel name.
+    pub channel: ChannelName,
+    /// Target mix name.
+    pub mix: MixName,
+    /// Whether audio is currently routed from `channel` into `mix`.
+    pub active: bool,
+    /// Gain percentage (`0.0` = silence, `100.0` = unity).
+    pub gain_percent: f32,
+    /// Whether this route is muted.
+    pub muted: bool,
+}
+
+/// Summary of an installed `.desktop` application discovered by the resolver.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledAppInfo {
+    /// Desktop file identifier (e.g. `"firefox"` or `"com.discordapp.Discord"`).
+    pub id: AppId,
+    /// Human-readable application display name.
+    pub name: String,
+    /// Optional XDG icon name or path from the `.desktop` entry.
+    pub icon: Option<String>,
+    /// Executable binary name extracted from `Exec=`, if available.
+    pub exec_bin: Option<String>,
+}
+
+/// Complete snapshot of the routing topology, mixer cells, outputs, and app routes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GraphSnapshot {
+    /// Configured channel names.
+    pub channels: Vec<ChannelName>,
+    /// Configured mix names.
+    pub mixes: Vec<MixName>,
+    /// Globally active mix driving the audio output, if any.
+    pub active_mix: Option<MixName>,
+    /// Full channel-to-mix matrix cells.
+    pub routes: Vec<MixRouteInfo>,
+    /// Available `PipeWire` audio output sinks.
+    pub outputs: Vec<OutputDeviceInfo>,
+    /// Currently running resolved applications.
+    pub apps: Vec<ActiveAppInfo>,
+    /// Configured application-to-channel routing rules.
+    pub app_routes: Vec<(AppDisplay, ChannelName)>,
+}
+
 /// Answer to a control event that asks for state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -73,4 +120,8 @@ pub enum ControlReply {
     ActiveMix { mix: Option<MixName> },
     /// All available audio output sinks.
     Outputs { outputs: Vec<OutputDeviceInfo> },
+    /// Full routing graph and mixer state snapshot.
+    GraphSnapshot(GraphSnapshot),
+    /// Installed desktop applications known to the resolver.
+    InstalledApps { apps: Vec<InstalledAppInfo> },
 }

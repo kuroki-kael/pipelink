@@ -4,6 +4,7 @@
  */
 
 mod desktop;
+mod installed;
 mod proc;
 pub mod service;
 mod wrappers;

@@ -3,12 +3,17 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 use pipelink_common::{
-    events::{ActiveAppInfo, ControlEvent, ControlReply, OutputDeviceInfo},
+    events::{
+        ActiveAppInfo, ControlEvent, ControlReply, GraphSnapshot, MixRouteInfo, OutputDeviceInfo,
+    },
     graph::audio_graph::AudioGraph,
     types::{ChannelName, MixName},
 };
 
-use crate::executor::{Envelope, Executor};
+use crate::{
+    config::{state::linear_to_percent, topology::ConfigGraph},
+    executor::{Envelope, Executor},
+};
 
 impl Executor {
     /// Answers a query from the graph and returns the event if it was no query.
@@ -57,18 +62,12 @@ impl Executor {
                 None
             },
             ControlEvent::ListApps => {
-                let apps = self
-                    .graph
-                    .apps
-                    .iter()
-                    .map(|a| ActiveAppInfo {
-                        display_name: a.app.display_name.clone(),
-                        app_name: a.app.app_name.clone(),
-                        channel: a.channel.clone(),
-                        stream_count: a.nodes.len(),
-                    })
-                    .collect();
-                Self::reply(reply, ControlReply::Apps { apps });
+                Self::reply(
+                    reply,
+                    ControlReply::Apps {
+                        apps: collect_active_apps(&self.graph),
+                    },
+                );
                 None
             },
             ControlEvent::GetActiveMix => {
@@ -81,24 +80,86 @@ impl Executor {
                 None
             },
             ControlEvent::ListOutputs => {
-                let active = self.graph.selected_output.as_ref();
-                let outputs = self
-                    .graph
-                    .outputs
-                    .iter()
-                    .map(|o| OutputDeviceInfo {
-                        name: o.node.name.clone(),
-                        description: o.description.clone(),
-                        nick: o.nick.clone(),
-                        is_hardware: o.is_hardware,
-                        active: active == Some(&o.node.name),
-                    })
-                    .collect();
-                Self::reply(reply, ControlReply::Outputs { outputs });
+                Self::reply(
+                    reply,
+                    ControlReply::Outputs {
+                        outputs: collect_outputs(&self.graph),
+                    },
+                );
+                None
+            },
+            ControlEvent::GetGraphSnapshot => {
+                Self::reply(
+                    reply,
+                    ControlReply::GraphSnapshot(build_graph_snapshot(&self.graph, &self.config)),
+                );
+                None
+            },
+            ControlEvent::ListInstalledApps => {
+                Self::reply(
+                    reply,
+                    ControlReply::InstalledApps {
+                        apps: self.resolver.installed_apps(),
+                    },
+                );
                 None
             },
             other => Some(other),
         }
+    }
+}
+
+fn collect_active_apps(graph: &AudioGraph) -> Vec<ActiveAppInfo> {
+    graph
+        .apps
+        .iter()
+        .map(|a| ActiveAppInfo {
+            display_name: a.app.display_name.clone(),
+            app_name: a.app.app_name.clone(),
+            channel: a.channel.clone(),
+            stream_count: a.nodes.len(),
+        })
+        .collect()
+}
+
+fn collect_outputs(graph: &AudioGraph) -> Vec<OutputDeviceInfo> {
+    let active = graph.selected_output.as_ref();
+    graph
+        .outputs
+        .iter()
+        .map(|o| OutputDeviceInfo {
+            name: o.node.name.clone(),
+            description: o.description.clone(),
+            nick: o.nick.clone(),
+            is_hardware: o.is_hardware,
+            active: active == Some(&o.node.name),
+        })
+        .collect()
+}
+
+fn collect_mix_routes(graph: &AudioGraph) -> Vec<MixRouteInfo> {
+    graph
+        .routes()
+        .iter()
+        .map(|r| MixRouteInfo {
+            channel: r.channel.clone(),
+            mix: r.mix.clone(),
+            active: r.active,
+            gain_percent: linear_to_percent(r.gain),
+            muted: r.muted,
+        })
+        .collect()
+}
+
+fn build_graph_snapshot(graph: &AudioGraph, config: &ConfigGraph) -> GraphSnapshot {
+    GraphSnapshot {
+        channels: graph.channels().iter().map(|c| c.name.clone()).collect(),
+        mixes: graph.mixes().iter().map(|m| m.name.clone()).collect(),
+        active_mix: graph.active_mix.clone(),
+        routes: collect_mix_routes(graph),
+        outputs: collect_outputs(graph),
+        apps: collect_active_apps(graph),
+        app_routes: config.app_routes(),
     }
 }
 
@@ -148,5 +209,29 @@ mod tests {
                 (MixName::from("Stream"), vec![ChannelName::from("Music")]),
             ]
         );
+    }
+
+    #[test]
+    fn test_build_graph_snapshot_includes_routes_gains_and_mutes() {
+        let mut graph = AudioGraph::new();
+        graph.add_channel(ChannelName::from("Music")).unwrap();
+        graph.add_mix(MixName::from("Personal")).unwrap();
+        graph.active_mix = Some(MixName::from("Personal"));
+        let route = graph
+            .get_route_mut(&ChannelName::from("Music"), &MixName::from("Personal"))
+            .unwrap();
+        route.active = true;
+        route.gain = 0.5;
+        route.muted = true;
+
+        let config = ConfigGraph::default();
+        let snapshot = build_graph_snapshot(&graph, &config);
+        assert_eq!(snapshot.channels, vec![ChannelName::from("Music")]);
+        assert_eq!(snapshot.mixes, vec![MixName::from("Personal")]);
+        assert_eq!(snapshot.active_mix, Some(MixName::from("Personal")));
+        assert_eq!(snapshot.routes.len(), 1);
+        assert!(snapshot.routes[0].active);
+        assert!((snapshot.routes[0].gain_percent - 50.0).abs() < f32::EPSILON);
+        assert!(snapshot.routes[0].muted);
     }
 }
