@@ -30,13 +30,14 @@ pub(crate) enum AppAction {
 pub(super) async fn run(action: AppAction) {
     match action {
         AppAction::List => {
-            let routes = match crate::ipc::send_query(ControlEvent::ListAppChannels).await {
+            let routes = match pipelink_ipc::client::send_query(ControlEvent::ListAppChannels).await
+            {
                 Ok(ControlReply::AppChannels { routes }) => routes,
                 Ok(other) => fail(format!("unexpected answer: {other:?}")),
                 Err(e) => fail(e),
             };
 
-            let apps = match crate::ipc::send_query(ControlEvent::ListApps).await {
+            let apps = match pipelink_ipc::client::send_query(ControlEvent::ListApps).await {
                 Ok(ControlReply::Apps { apps }) => apps,
                 Ok(other) => fail(format!("unexpected answer: {other:?}")),
                 Err(e) => fail(e),
@@ -75,7 +76,7 @@ pub(super) async fn run(action: AppAction) {
                 app: app_display.clone(),
                 channel: ch.clone(),
             };
-            let reply = crate::ipc::send_mutation(req, |event| match event {
+            let reply = pipelink_ipc::client::send_mutation(req, |event| match event {
                 StateEvent::AppRouted { app: a, channel: c } => {
                     c.eq_ignore_ascii_case(&ch) && a.eq_ignore_ascii_case(app_display.trim())
                 },
@@ -107,7 +108,7 @@ pub(super) async fn run(action: AppAction) {
             let req = ControlEvent::UnrouteApp {
                 app: app_display.clone(),
             };
-            let reply = crate::ipc::send_mutation(req, |event| match event {
+            let reply = pipelink_ipc::client::send_mutation(req, |event| match event {
                 StateEvent::AppUnrouted { app: a }
                 | StateEvent::AppRoutingFailed { app: a, .. } => {
                     a.eq_ignore_ascii_case(app_display.trim()) || a == &app_display

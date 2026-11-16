@@ -5,7 +5,6 @@
 
 mod cli;
 mod daemon;
-mod ipc;
 
 #[cfg(feature = "gui")]
 mod gui;

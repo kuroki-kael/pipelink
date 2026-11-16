@@ -38,22 +38,24 @@ pub(crate) enum RouteAction {
 /// Runs a route command against the daemon.
 pub(super) async fn run(action: RouteAction) {
     match action {
-        RouteAction::List => match crate::ipc::send_query(ControlEvent::ListMixChannels).await {
-            Ok(ControlReply::MixChannels { channels }) => {
-                if channels.is_empty() {
-                    println!("no mixes configured");
-                }
-                for (mix, mix_channels) in channels {
-                    if mix_channels.is_empty() {
-                        println!("{mix}: (none)");
-                    } else {
-                        let list: Vec<&str> = mix_channels.iter().map(AsRef::as_ref).collect();
-                        println!("{mix}: {}", list.join(", "));
+        RouteAction::List => {
+            match pipelink_ipc::client::send_query(ControlEvent::ListMixChannels).await {
+                Ok(ControlReply::MixChannels { channels }) => {
+                    if channels.is_empty() {
+                        println!("no mixes configured");
                     }
-                }
-            },
-            Ok(other) => fail(format!("unexpected answer: {other:?}")),
-            Err(e) => fail(e),
+                    for (mix, mix_channels) in channels {
+                        if mix_channels.is_empty() {
+                            println!("{mix}: (none)");
+                        } else {
+                            let list: Vec<&str> = mix_channels.iter().map(AsRef::as_ref).collect();
+                            println!("{mix}: {}", list.join(", "));
+                        }
+                    }
+                },
+                Ok(other) => fail(format!("unexpected answer: {other:?}")),
+                Err(e) => fail(e),
+            }
         },
         RouteAction::Set { channel, mix } => {
             let ch = ChannelName::from(channel.as_str());
@@ -157,9 +159,9 @@ async fn send_route_mutation(
     request: ControlEvent,
     ch: &ChannelName,
     mx: &MixName,
-    is_success: impl Fn(&StateEvent) -> bool,
+    is_success: impl Fn(&StateEvent) -> bool + Sync,
 ) -> StateEvent {
-    let result = crate::ipc::send_mutation(request, |event| {
+    let result = pipelink_ipc::client::send_mutation(request, |event| {
         is_success(event)
             || matches!(
                 event,

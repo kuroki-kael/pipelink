@@ -27,21 +27,26 @@ pub(crate) enum ChannelAction {
 /// Runs a channel command against the daemon.
 pub(super) async fn run(action: ChannelAction) {
     match action {
-        ChannelAction::List => match crate::ipc::send_query(ControlEvent::ListChannels).await {
-            Ok(ControlReply::Channels { names }) => {
-                for name in names {
-                    println!("{name}");
-                }
-            },
-            Ok(other) => fail(format!("unexpected answer: {other:?}")),
-            Err(e) => fail(e),
+        ChannelAction::List => {
+            match pipelink_ipc::client::send_query(ControlEvent::ListChannels).await {
+                Ok(ControlReply::Channels { names }) => {
+                    for name in names {
+                        println!("{name}");
+                    }
+                },
+                Ok(other) => fail(format!("unexpected answer: {other:?}")),
+                Err(e) => fail(e),
+            }
         },
         ChannelAction::Add { name } => {
             let target = ChannelName::from(name.clone());
             let request = ControlEvent::CreateChannel {
                 name: target.clone(),
             };
-            match crate::ipc::send_mutation(request, |event| confirms_created(event, &target)).await
+            match pipelink_ipc::client::send_mutation(request, |event| {
+                confirms_created(event, &target)
+            })
+            .await
             {
                 Ok(StateEvent::ChannelCreationFailed { error, .. }) => {
                     fail(format!("failed to create channel '{name}': {error}"));
@@ -55,7 +60,10 @@ pub(super) async fn run(action: ChannelAction) {
             let request = ControlEvent::RemoveChannel {
                 name: target.clone(),
             };
-            match crate::ipc::send_mutation(request, |event| confirms_removed(event, &target)).await
+            match pipelink_ipc::client::send_mutation(request, |event| {
+                confirms_removed(event, &target)
+            })
+            .await
             {
                 Ok(StateEvent::ChannelRemovalFailed { error, .. }) => {
                     fail(format!("failed to remove channel '{name}': {error}"));

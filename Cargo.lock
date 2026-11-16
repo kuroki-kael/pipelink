@@ -490,6 +490,7 @@ dependencies = [
  "clap",
  "pipelink-common",
  "pipelink-engine",
+ "pipelink-ipc",
  "serde",
  "serde_json",
  "tokio",
@@ -513,10 +514,22 @@ name = "pipelink-engine"
 version = "0.1.1"
 dependencies = [
  "pipelink-common",
+ "pipelink-ipc",
  "pipelink-jack",
  "pipelink-pw",
  "pipelink-resolver",
  "pipewire",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "pipelink-ipc"
+version = "0.1.1"
+dependencies = [
+ "pipelink-common",
  "serde",
  "serde_json",
  "tokio",

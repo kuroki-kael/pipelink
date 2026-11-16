@@ -117,31 +117,31 @@ pub(crate) async fn run() {
 
 /// Shows what the daemon reports about the graph.
 async fn print_status() {
-    let channels = match crate::ipc::send_query(ControlEvent::ListChannels).await {
+    let channels = match pipelink_ipc::client::send_query(ControlEvent::ListChannels).await {
         Ok(ControlReply::Channels { names }) => names,
         Ok(other) => fail(format!("unexpected answer: {other:?}")),
         Err(e) => fail(daemon_error(&e)),
     };
 
-    let mixes = match crate::ipc::send_query(ControlEvent::ListMixes).await {
+    let mixes = match pipelink_ipc::client::send_query(ControlEvent::ListMixes).await {
         Ok(ControlReply::Mixes { names }) => names,
         Ok(other) => fail(format!("unexpected answer: {other:?}")),
         Err(e) => fail(daemon_error(&e)),
     };
 
-    let app_routes = match crate::ipc::send_query(ControlEvent::ListAppChannels).await {
+    let app_routes = match pipelink_ipc::client::send_query(ControlEvent::ListAppChannels).await {
         Ok(ControlReply::AppChannels { routes }) => routes,
         Ok(other) => fail(format!("unexpected answer: {other:?}")),
         Err(e) => fail(daemon_error(&e)),
     };
 
-    let active_mix = match crate::ipc::send_query(ControlEvent::GetActiveMix).await {
+    let active_mix = match pipelink_ipc::client::send_query(ControlEvent::GetActiveMix).await {
         Ok(ControlReply::ActiveMix { mix }) => mix,
         Ok(other) => fail(format!("unexpected answer: {other:?}")),
         Err(e) => fail(daemon_error(&e)),
     };
 
-    let outputs = match crate::ipc::send_query(ControlEvent::ListOutputs).await {
+    let outputs = match pipelink_ipc::client::send_query(ControlEvent::ListOutputs).await {
         Ok(ControlReply::Outputs { outputs }) => outputs,
         Ok(other) => fail(format!("unexpected answer: {other:?}")),
         Err(e) => fail(daemon_error(&e)),
@@ -205,7 +205,7 @@ async fn set_default_sink(target: String) {
     let req = ControlEvent::SetDefaultSink {
         sink: target.clone(),
     };
-    let reply = crate::ipc::send_mutation(req, |event| {
+    let reply = pipelink_ipc::client::send_mutation(req, |event| {
         matches!(
             event,
             StateEvent::DefaultSinkChanged { .. } | StateEvent::DefaultSinkOperationFailed { .. }

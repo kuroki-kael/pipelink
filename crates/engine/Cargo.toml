@@ -12,6 +12,7 @@ authors.workspace = true
 [dependencies]
 # Internal
 pipelink-common = { workspace = true }
+pipelink-ipc = { workspace = true }
 pipelink-jack = { workspace = true }
 pipelink-pw = { workspace = true }
 pipelink-resolver = { workspace = true }

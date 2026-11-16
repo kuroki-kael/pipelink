@@ -31,7 +31,7 @@ pub(crate) enum MixAction {
 /// Runs a mix command against the daemon.
 pub(super) async fn run(action: MixAction) {
     match action {
-        MixAction::List => match crate::ipc::send_query(ControlEvent::ListMixes).await {
+        MixAction::List => match pipelink_ipc::client::send_query(ControlEvent::ListMixes).await {
             Ok(ControlReply::Mixes { names }) => {
                 for name in names {
                     println!("{name}");
@@ -45,7 +45,10 @@ pub(super) async fn run(action: MixAction) {
             let request = ControlEvent::CreateMix {
                 name: target.clone(),
             };
-            match crate::ipc::send_mutation(request, |event| confirms_created(event, &target)).await
+            match pipelink_ipc::client::send_mutation(request, |event| {
+                confirms_created(event, &target)
+            })
+            .await
             {
                 Ok(StateEvent::MixCreationFailed { error, .. }) => {
                     fail(format!("failed to create mix '{name}': {error}"));
@@ -59,7 +62,10 @@ pub(super) async fn run(action: MixAction) {
             let request = ControlEvent::RemoveMix {
                 name: target.clone(),
             };
-            match crate::ipc::send_mutation(request, |event| confirms_removed(event, &target)).await
+            match pipelink_ipc::client::send_mutation(request, |event| {
+                confirms_removed(event, &target)
+            })
+            .await
             {
                 Ok(StateEvent::MixRemovalFailed { error, .. }) => {
                     fail(format!("failed to remove mix '{name}': {error}"));
@@ -70,7 +76,7 @@ pub(super) async fn run(action: MixAction) {
             }
         },
         MixAction::Active { mix: None } => {
-            match crate::ipc::send_query(ControlEvent::GetActiveMix).await {
+            match pipelink_ipc::client::send_query(ControlEvent::GetActiveMix).await {
                 Ok(ControlReply::ActiveMix { mix: Some(mix) }) => println!("{mix}"),
                 Ok(ControlReply::ActiveMix { mix: None }) => println!("(none)"),
                 Ok(other) => fail(format!("unexpected answer: {other:?}")),
@@ -82,9 +88,10 @@ pub(super) async fn run(action: MixAction) {
             let request = ControlEvent::SelectGlobalActiveLayer {
                 mix: target.clone(),
             };
-            let reply =
-                crate::ipc::send_mutation(request, |event| confirms_activated(event, &target))
-                    .await;
+            let reply = pipelink_ipc::client::send_mutation(request, |event| {
+                confirms_activated(event, &target)
+            })
+            .await;
             match reply {
                 Ok(StateEvent::LayerSelectionFailed { error, .. }) => {
                     fail(format!("failed to select active mix '{name}': {error}"));

@@ -7,10 +7,11 @@ use std::{collections::HashSet, fmt, time::Duration};
 
 use pipelink_common::{
     error::ExecutorError,
-    events::{ControlEvent, ControlReply, StateEvent},
+    events::{ControlReply, StateEvent},
     graph::audio_graph::AudioGraph,
     types::{ChannelName, MixName},
 };
+pub use pipelink_ipc::Envelope;
 use pipelink_jack::JackClient;
 use pipelink_pw::{Command as PipewireCommand, PipewireEvent, PipewireService};
 use pipelink_resolver::service::ProcessResolver;
@@ -177,15 +178,6 @@ impl Executor {
             let _ = reply_tx.send(msg);
         }
     }
-}
-
-/// A control event together with the channel its answer goes back through.
-#[derive(Debug)]
-pub struct Envelope {
-    /// The requested state change or query.
-    pub event: ControlEvent,
-    /// Where the answer goes, `None` if the event asks for no answer.
-    pub reply: Option<Sender<ControlReply>>,
 }
 
 async fn sleep_until_optional(deadline: Option<tokio::time::Instant>) {

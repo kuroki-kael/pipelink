@@ -22,26 +22,28 @@ pub(crate) enum OutputAction {
 /// Runs an output command against the daemon.
 pub(super) async fn run(action: OutputAction) {
     match action {
-        OutputAction::List => match crate::ipc::send_query(ControlEvent::ListOutputs).await {
-            Ok(ControlReply::Outputs { outputs }) => {
-                if outputs.is_empty() {
-                    println!("(none)");
-                    return;
-                }
-                for out in outputs {
-                    let marker = if out.active { "*" } else { " " };
-                    let kind = if out.is_hardware { "hw" } else { "sw" };
-                    println!("{marker} [{kind}] {}", format_output_display(&out));
-                }
-            },
-            Ok(other) => fail(format!("unexpected answer: {other:?}")),
-            Err(e) => fail(e),
+        OutputAction::List => {
+            match pipelink_ipc::client::send_query(ControlEvent::ListOutputs).await {
+                Ok(ControlReply::Outputs { outputs }) => {
+                    if outputs.is_empty() {
+                        println!("(none)");
+                        return;
+                    }
+                    for out in outputs {
+                        let marker = if out.active { "*" } else { " " };
+                        let kind = if out.is_hardware { "hw" } else { "sw" };
+                        println!("{marker} [{kind}] {}", format_output_display(&out));
+                    }
+                },
+                Ok(other) => fail(format!("unexpected answer: {other:?}")),
+                Err(e) => fail(e),
+            }
         },
         OutputAction::Set { device } => {
             let request = ControlEvent::SetOutput {
                 output: device.clone(),
             };
-            let reply = crate::ipc::send_mutation(request, |event| {
+            let reply = pipelink_ipc::client::send_mutation(request, |event| {
                 matches!(
                     event,
                     StateEvent::OutputChanged { .. } | StateEvent::OutputOperationFailed { .. }

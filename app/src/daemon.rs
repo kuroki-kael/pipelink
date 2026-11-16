@@ -4,13 +4,12 @@
  */
 use pipelink_common::logger::{self, LogConfig};
 use pipelink_engine::{ConfigGraph, StoragePaths, executor::Executor};
+use pipelink_ipc::server::{handle_client, start_server};
 use tokio::{
     signal::unix::{SignalKind, signal},
     sync::watch,
 };
 use tracing::{info, warn};
-
-use crate::ipc::{handle_client, start_server};
 
 /// Runs the audio routing daemon until the executor stops or receives `SIGINT`/`SIGTERM`.
 ///

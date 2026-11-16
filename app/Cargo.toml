@@ -13,6 +13,7 @@ authors.workspace = true
 # Internal
 pipelink-common = { workspace = true }
 pipelink-engine = { workspace = true }
+pipelink-ipc = { workspace = true }
 
 clap = { workspace = true }
 tokio = { workspace = true }
