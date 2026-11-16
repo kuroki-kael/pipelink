@@ -27,7 +27,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut executor = match StoragePaths::discover() {
         Some(paths) => {
-            let config = paths.load_config();
+            let config = paths.load_or_init_config();
             let state = paths.load_state();
             Executor::with_persistence(config, &state, Some(paths), control_rx, state_tx)?
         },

@@ -55,6 +55,24 @@ impl ConfigGraph {
         Self::default()
     }
 
+    /// Returns the starter topology created on first daemon launch when no `config.json`
+    /// exists yet.
+    #[must_use]
+    pub fn starter_default() -> Self {
+        let mut cfg = Self::new();
+        for ch in ["System", "Music", "Games", "Voice"] {
+            cfg.ensure_channel(&ChannelName::from(ch));
+        }
+        let personal = MixName::from("Personal");
+        let stream = MixName::from("Stream");
+        cfg.ensure_mix(&personal);
+        cfg.ensure_mix(&stream);
+        for ch in ["System", "Music", "Games", "Voice"] {
+            cfg.set_channel_mix(&ChannelName::from(ch), &personal);
+        }
+        cfg
+    }
+
     /// Ensures a channel entry exists in [`ConfigGraph::channels`] (case-insensitive).
     pub fn ensure_channel(&mut self, name: &ChannelName) {
         if !self
@@ -199,65 +217,4 @@ impl ConfigGraph {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_config_graph_app_route_lifecycle() {
-        let mut cfg = ConfigGraph::new();
-        let game = ChannelName::from("Game");
-        let chat = ChannelName::from("Chat");
-
-        assert!(!cfg.set_app_route(AppDisplay::from("Discord"), &chat));
-
-        cfg.ensure_channel(&game);
-        cfg.ensure_channel(&chat);
-
-        assert!(cfg.set_app_route(AppDisplay::from("Discord"), &chat));
-        assert_eq!(cfg.find_app_channel("discord"), Some(&chat));
-        assert_eq!(
-            cfg.app_routes(),
-            vec![(AppDisplay::from("Discord"), chat.clone())]
-        );
-
-        // Moving the app to another channel replaces the previous rule without
-        // duplicates.
-        assert!(cfg.set_app_route(AppDisplay::from("discord"), &game));
-        assert_eq!(cfg.find_app_channel("Discord"), Some(&game));
-        assert_eq!(
-            cfg.app_routes(),
-            vec![(AppDisplay::from("discord"), game.clone())]
-        );
-
-        // Deleting a channel clears its app rules as well.
-        cfg.remove_channel(&game);
-        assert_eq!(cfg.find_app_channel("Discord"), None);
-        assert_eq!(cfg.app_routes(), Vec::new());
-    }
-
-    #[test]
-    fn test_config_graph_mix_route_sync_is_case_insensitive() {
-        let mut cfg = ConfigGraph::new();
-        let music = ChannelName::from("Music");
-        let personal = MixName::from("Personal");
-        cfg.ensure_channel(&music);
-        cfg.ensure_mix(&personal);
-
-        // Using differently cased names does not duplicate entries and normalizes
-        // channel.
-        cfg.set_channel_mix(&ChannelName::from("music"), &MixName::from("personal"));
-        assert_eq!(cfg.channels.len(), 1);
-        assert_eq!(cfg.mixes.len(), 1);
-        assert_eq!(cfg.mixes[0].channels, vec![music.clone()]);
-
-        cfg.remove_channel_mix(&ChannelName::from("MUSIC"), &MixName::from("PERSONAL"));
-        assert_eq!(cfg.mixes[0].channels, Vec::<ChannelName>::new());
-
-        cfg.set_channel_mix(&music, &personal);
-        assert!(cfg.remove_channel(&ChannelName::from("music")));
-        assert_eq!(cfg.mixes[0].channels, Vec::<ChannelName>::new());
-
-        assert!(cfg.remove_mix(&MixName::from("PERSONAL")));
-        assert_eq!(cfg.mixes, Vec::new());
-    }
-}
+mod tests;
