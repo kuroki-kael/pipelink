@@ -9,7 +9,7 @@ on:
 
 jobs:
   package-linux:
-    name: Build Linux Packages (.deb & .tar.gz)
+    name: Build & Publish Debian / Tarball
     runs-on: rust
 
     steps:
@@ -19,6 +19,10 @@ jobs:
           git remote add origin "https://oauth2:${{ secrets.GITHUB_TOKEN }}@codeberg.org/${{ github.repository }}.git"
           git fetch --depth=1 origin "${{ github.ref }}"
           git checkout FETCH_HEAD
+
+      - name: Verify tag is on main branch
+        if: startsWith(github.ref, 'refs/tags/')
+        run: ./.forgejo/scripts/verify-tag-on-main.sh
 
       - name: Install system and packaging dependencies
         run: |
@@ -50,23 +54,151 @@ jobs:
           (cd dist && sha256sum * > SHA256SUMS)
           ls -lh dist/
 
-      - name: Publish tag release assets on Codeberg
+      - name: Push .deb and .tar.gz to Codeberg Package Registry
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          if [ -z "$PACKAGE_TOKEN" ]; then
+            echo "PACKAGE_TOKEN secret is not set" >&2
+            exit 1
+          fi
+          OWNER="${{ github.repository_owner }}"
+          VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
+          AUTH="Authorization: token ${PACKAGE_TOKEN}"
+
+          for deb in dist/*.deb; do
+            [ -f "$deb" ] || continue
+            curl -fsSL -X PUT -H "$AUTH" \
+              --upload-file "$deb" \
+              "https://codeberg.org/api/packages/${OWNER}/debian/pool/stable/main/upload"
+            echo "Published $(basename "$deb") to Codeberg Debian registry"
+          done
+
+          for tarball in dist/*.tar.gz; do
+            [ -f "$tarball" ] || continue
+            name="$(basename "$tarball")"
+            curl -fsSL -X PUT -H "$AUTH" \
+              --upload-file "$tarball" \
+              "https://codeberg.org/api/packages/${OWNER}/generic/pipelink/${VERSION}/${name}"
+            echo "Published ${name} to Codeberg Generic registry"
+          done
+
+      - name: Attach Debian/Tarball assets to Codeberg Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
-          API="https://codeberg.org/api/v1/repos/${{ github.repository }}"
-          AUTH="Authorization: token ${{ secrets.GITHUB_TOKEN }}"
-          REL_JSON="$(curl -fsSL -H "$AUTH" "$API/releases/tags/$TAG" 2>/dev/null || true)"
-          if [ -z "$REL_JSON" ] || [ "$(echo "$REL_JSON" | jq -r '.id // empty')" = "" ]; then
-            REL_JSON="$(curl -fsSL -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d "$(jq -n --arg tag "$TAG" '{tag_name: $tag, name: $tag}')" \
-              "$API/releases")"
+          ./.forgejo/scripts/upload-release-assets.sh "$TAG" "${{ github.repository }}" dist/*
+
+  package-arch:
+    name: Build & Publish Arch Package
+    runs-on: archlinux
+
+    steps:
+      - name: Install system and packaging dependencies
+        run: |
+          if command -v rustup >/dev/null 2>&1; then
+            pacman -Syu --noconfirm --needed base-devel git curl jq clang pkgconf pipewire pipewire-jack wireplumber make
+            export RUSTUP_HOME=/tmp/pipelink-rustup
+            mkdir -p "$RUSTUP_HOME"
+            rustup toolchain install stable --profile minimal
+            chmod -R a+rX "$RUSTUP_HOME"
+          else
+            pacman -Syu --noconfirm --needed base-devel git curl jq rust clang pkgconf pipewire pipewire-jack wireplumber make
           fi
-          REL_ID="$(echo "$REL_JSON" | jq -r '.id')"
-          for file in dist/*; do
-            [ -f "$file" ] || continue
-            name="$(basename "$file")"
-            curl -fsSL -X POST -H "$AUTH" -F "attachment=@$file" \
-              "$API/releases/${REL_ID}/assets?name=${name}" >/dev/null
-            echo "Uploaded $name to release $TAG"
+
+      - name: Checkout repository
+        run: |
+          git init .
+          git remote add origin "https://oauth2:${{ secrets.GITHUB_TOKEN }}@codeberg.org/${{ github.repository }}.git"
+          git fetch --depth=1 origin "${{ github.ref }}"
+          git checkout FETCH_HEAD
+
+      - name: Verify tag is on main branch
+        if: startsWith(github.ref, 'refs/tags/')
+        run: ./.forgejo/scripts/verify-tag-on-main.sh
+
+      - name: Build Arch .pkg.tar.zst package
+        run: |
+          PKGVER="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
+          BUILD_DIR="/tmp/pipelink-arch-build"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR" dist
+          sed "s/^pkgver=.*/pkgver=${PKGVER}/" packaging/arch/PKGBUILD > "$BUILD_DIR/PKGBUILD"
+          git archive --format=tar.gz --prefix="pipelink-${PKGVER}/" HEAD -o "$BUILD_DIR/pipelink-${PKGVER}.tar.gz"
+          if [ "$(id -u)" -eq 0 ]; then
+            id -u builder >/dev/null 2>&1 || useradd -m -s /bin/bash builder
+            chown -R builder:builder "$BUILD_DIR"
+            su -s /bin/bash builder -c "cd '$BUILD_DIR' && RUSTUP_HOME=/tmp/pipelink-rustup makepkg -f --noconfirm"
+          else
+            (cd "$BUILD_DIR" && makepkg -f --noconfirm)
+          fi
+          cp "$BUILD_DIR"/pipelink-*.pkg.tar.zst dist/
+          (cd dist && sha256sum *.pkg.tar.zst > SHA256SUMS.arch)
+          ls -lh dist/
+
+      - name: Push .pkg.tar.zst to Codeberg Arch Package Registry
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          if [ -z "$PACKAGE_TOKEN" ]; then
+            echo "PACKAGE_TOKEN secret is not set" >&2
+            exit 1
+          fi
+          OWNER="${{ github.repository_owner }}"
+          AUTH="Authorization: token ${PACKAGE_TOKEN}"
+
+          for pkg in dist/*.pkg.tar.zst; do
+            [ -f "$pkg" ] || continue
+            curl -fsSL -X PUT -H "$AUTH" \
+              --header "Content-Type: application/octet-stream" \
+              --data-binary "@${pkg}" \
+              "https://codeberg.org/api/packages/${OWNER}/arch/main"
+            echo "Published $(basename "$pkg") to Codeberg Arch registry"
           done
+
+      - name: Attach Arch assets to Codeberg Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
+          ./.forgejo/scripts/upload-release-assets.sh "$TAG" "${{ github.repository }}" dist/*
+
+  publish-cargo:
+    name: Publish Cargo Crates
+    needs: [package-linux, package-arch]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: rust
+
+    steps:
+      - name: Checkout repository
+        run: |
+          git init .
+          git remote add origin "https://oauth2:${{ secrets.GITHUB_TOKEN }}@codeberg.org/${{ github.repository }}.git"
+          git fetch --depth=1 origin "${{ github.ref }}"
+          git checkout FETCH_HEAD
+
+      - name: Verify tag is on main branch
+        run: ./.forgejo/scripts/verify-tag-on-main.sh
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            pkg-config \
+            libpipewire-0.3-dev \
+            libjack-jackd2-dev \
+            clang \
+            libclang-dev \
+            curl \
+            jq
+
+      - name: Publish workspace crates to crates.io and Codeberg
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: ./.forgejo/scripts/publish-cargo.sh "${{ github.repository_owner }}"

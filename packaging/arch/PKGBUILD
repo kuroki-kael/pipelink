@@ -6,9 +6,9 @@ pkgdesc='Virtual PipeWire/JACK audio routing daemon and CLI'
 arch=('x86_64' 'aarch64')
 url='https://codeberg.org/kuroki-kael/pipelink'
 license=('GPL-3.0-or-later')
-depends=('pipewire' 'pipewire-jack')
-optdepends=('wireplumber: default sink management and desktop session routing')
+depends=('pipewire' 'pipewire-jack' 'wireplumber')
 makedepends=('cargo' 'clang' 'pkgconf')
+options=('!debug' '!lto')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
