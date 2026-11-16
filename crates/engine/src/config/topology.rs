@@ -8,7 +8,7 @@
 use pipelink_common::types::{AppDisplay, ChannelName, MixName, NodeName};
 use serde::{Deserialize, Serialize};
 
-/// A virtual Sink an app or microphone gets routed to.
+/// A virtual sink that applications get routed to.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub struct AudioChannel {
@@ -17,9 +17,6 @@ pub struct AudioChannel {
     /// Application display names routed to this channel.
     #[serde(default)]
     pub apps: Vec<AppDisplay>,
-    /// Optional physical input source.
-    #[serde(default)]
-    pub source: Option<NodeName>,
 }
 
 /// A consumer of one or more channels.
@@ -40,8 +37,8 @@ pub struct ConfigGraph {
     /// Physical Sink name the active mix routes to.
     #[serde(default)]
     pub output: Option<NodeName>,
-    /// Name of mix that goes to output.
-    #[serde(default)]
+    /// Name of mix that goes to output (runtime fallback; stored in `RuntimeState`).
+    #[serde(default, skip_serializing)]
     pub active_mix: Option<MixName>,
     /// All defined channels.
     #[serde(default)]
@@ -58,9 +55,13 @@ impl ConfigGraph {
         Self::default()
     }
 
-    /// Ensures a channel entry exists in [`ConfigGraph::channels`].
+    /// Ensures a channel entry exists in [`ConfigGraph::channels`] (case-insensitive).
     pub fn ensure_channel(&mut self, name: &ChannelName) {
-        if !self.channels.iter().any(|ch| &ch.name == name) {
+        if !self
+            .channels
+            .iter()
+            .any(|ch| ch.name.eq_ignore_ascii_case(name))
+        {
             self.channels.push(AudioChannel {
                 name: name.clone(),
                 ..Default::default()
@@ -68,9 +69,73 @@ impl ConfigGraph {
         }
     }
 
-    /// Removes `name` and all application routing rules assigned to it.
-    pub fn remove_channel(&mut self, name: &ChannelName) {
-        self.channels.retain(|ch| &ch.name != name);
+    /// Removes `name` (case-insensitive), its app rules, and its references in mixes.
+    pub fn remove_channel(&mut self, name: &ChannelName) -> bool {
+        let before = self.channels.len();
+        self.channels
+            .retain(|ch| !ch.name.eq_ignore_ascii_case(name));
+        let removed_channel = self.channels.len() != before;
+        let mut removed_from_mix = false;
+        for mix in &mut self.mixes {
+            let mix_before = mix.channels.len();
+            mix.channels.retain(|ch| !ch.eq_ignore_ascii_case(name));
+            if mix.channels.len() != mix_before {
+                removed_from_mix = true;
+            }
+        }
+        removed_channel || removed_from_mix
+    }
+
+    /// Ensures a mix entry exists in [`ConfigGraph::mixes`] (case-insensitive).
+    pub fn ensure_mix(&mut self, name: &MixName) {
+        if !self.mixes.iter().any(|m| m.name.eq_ignore_ascii_case(name)) {
+            self.mixes.push(AudioMix {
+                name: name.clone(),
+                ..Default::default()
+            });
+        }
+    }
+
+    /// Removes `name` (case-insensitive) from [`ConfigGraph::mixes`].
+    pub fn remove_mix(&mut self, name: &MixName) -> bool {
+        let before = self.mixes.len();
+        self.mixes.retain(|m| !m.name.eq_ignore_ascii_case(name));
+        self.mixes.len() != before
+    }
+
+    /// Records an active `channel -> mix` route in [`ConfigGraph::mixes`].
+    pub fn set_channel_mix(&mut self, channel: &ChannelName, mix: &MixName) {
+        self.ensure_channel(channel);
+        self.ensure_mix(mix);
+
+        let canonical_ch = self
+            .channels
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(channel))
+            .map_or_else(|| channel.clone(), |c| c.name.clone());
+
+        if let Some(target) = self
+            .mixes
+            .iter_mut()
+            .find(|m| m.name.eq_ignore_ascii_case(mix))
+            && !target
+                .channels
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(&canonical_ch))
+        {
+            target.channels.push(canonical_ch);
+        }
+    }
+
+    /// Removes a `channel -> mix` route from [`ConfigGraph::mixes`].
+    pub fn remove_channel_mix(&mut self, channel: &ChannelName, mix: &MixName) {
+        if let Some(target) = self
+            .mixes
+            .iter_mut()
+            .find(|m| m.name.eq_ignore_ascii_case(mix))
+        {
+            target.channels.retain(|c| !c.eq_ignore_ascii_case(channel));
+        }
     }
 
     /// Assigns `app` to `channel`, removing any prior assignment of `app`.
@@ -78,12 +143,20 @@ impl ConfigGraph {
     /// Matching is case-insensitive so display-name lookups normalize cleanly.
     /// Returns `false` if `channel` does not exist in the config graph.
     pub fn set_app_route(&mut self, app: AppDisplay, channel: &ChannelName) -> bool {
-        if !self.channels.iter().any(|ch| &ch.name == channel) {
+        if !self
+            .channels
+            .iter()
+            .any(|ch| ch.name.eq_ignore_ascii_case(channel))
+        {
             return false;
         }
 
         self.remove_app_route(&app);
-        if let Some(target) = self.channels.iter_mut().find(|ch| &ch.name == channel) {
+        if let Some(target) = self
+            .channels
+            .iter_mut()
+            .find(|ch| ch.name.eq_ignore_ascii_case(channel))
+        {
             target.apps.push(app);
             return true;
         }
@@ -160,5 +233,31 @@ mod tests {
         cfg.remove_channel(&game);
         assert_eq!(cfg.find_app_channel("Discord"), None);
         assert_eq!(cfg.app_routes(), Vec::new());
+    }
+
+    #[test]
+    fn test_config_graph_mix_route_sync_is_case_insensitive() {
+        let mut cfg = ConfigGraph::new();
+        let music = ChannelName::from("Music");
+        let personal = MixName::from("Personal");
+        cfg.ensure_channel(&music);
+        cfg.ensure_mix(&personal);
+
+        // Using differently cased names does not duplicate entries and normalizes
+        // channel.
+        cfg.set_channel_mix(&ChannelName::from("music"), &MixName::from("personal"));
+        assert_eq!(cfg.channels.len(), 1);
+        assert_eq!(cfg.mixes.len(), 1);
+        assert_eq!(cfg.mixes[0].channels, vec![music.clone()]);
+
+        cfg.remove_channel_mix(&ChannelName::from("MUSIC"), &MixName::from("PERSONAL"));
+        assert_eq!(cfg.mixes[0].channels, Vec::<ChannelName>::new());
+
+        cfg.set_channel_mix(&music, &personal);
+        assert!(cfg.remove_channel(&ChannelName::from("music")));
+        assert_eq!(cfg.mixes[0].channels, Vec::<ChannelName>::new());
+
+        assert!(cfg.remove_mix(&MixName::from("PERSONAL")));
+        assert_eq!(cfg.mixes, Vec::new());
     }
 }

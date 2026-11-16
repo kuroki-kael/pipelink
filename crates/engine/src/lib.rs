@@ -6,4 +6,8 @@
 mod config;
 pub mod executor;
 
-pub use config::topology::{AudioChannel, AudioMix, ConfigGraph};
+pub use config::{
+    state::{RouteState, RuntimeState},
+    storage::StoragePaths,
+    topology::{AudioChannel, AudioMix, ConfigGraph},
+};

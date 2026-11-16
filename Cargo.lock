@@ -515,6 +515,7 @@ dependencies = [
  "pipelink-resolver",
  "pipewire",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
