@@ -2,11 +2,13 @@
  * Copyright (c) 2026 Kuroki-Kael / PipeLink Contributors.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+use pipelink_common::logger::{self, LogConfig};
 use pipelink_engine::{ConfigGraph, StoragePaths, executor::Executor};
 use tokio::{
     signal::unix::{SignalKind, signal},
     sync::watch,
 };
+use tracing::{info, warn};
 
 use crate::ipc::{handle_client, start_server};
 
@@ -15,10 +17,10 @@ use crate::ipc::{handle_client, start_server};
 /// # Errors
 /// Returns an error if the executor cannot be created or fails while running.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(e) = tracing_subscriber::fmt::try_init() {
-        eprintln!("Tracing-Subscriber nicht initialisierbar: {e}");
+    if let Err(e) = logger::init(&LogConfig::default()) {
+        eprintln!("Failed to initialize logger: {e}");
     }
-    println!("Starte Audio-Routing Daemon...");
+    info!("Starting audio routing daemon");
 
     let (control_tx, control_rx) = tokio::sync::mpsc::channel(32);
     let (state_tx, _) = tokio::sync::broadcast::channel(32);
@@ -56,7 +58,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     tokio::spawn(handle_client(socket, control_tx, state_rx));
                 },
                 Err(e) => {
-                    eprintln!("connection error: {e}");
+                    warn!("IPC client connection error: {e}");
                 },
             }
         }
@@ -64,7 +66,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "web")]
     {
-        println!("Web-Interface verfügbar auf http://localhost:8080");
+        info!("Web interface available at http://localhost:8080");
         // webserver::start();
     }
 

@@ -7,6 +7,7 @@ pub mod app;
 pub mod error;
 pub mod events;
 pub mod graph;
+pub mod logger;
 pub mod types;
 
 pub const JACK_CLIENT_NAME: &str = "PipeLink";

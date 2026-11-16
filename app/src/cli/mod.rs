@@ -187,7 +187,7 @@ async fn run_command(command: Command) {
     match command {
         Command::Daemon => {
             if let Err(e) = crate::daemon::run().await {
-                eprintln!("Daemon beendet mit Fehler: {e}");
+                eprintln!("Daemon exited with error: {e}");
                 std::process::exit(1);
             }
         },

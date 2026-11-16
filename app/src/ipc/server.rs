@@ -22,6 +22,7 @@ use tokio::{
         oneshot,
     },
 };
+use tracing::warn;
 
 use super::{current_uid, socket_path};
 
@@ -180,7 +181,7 @@ pub(crate) async fn handle_client(
             tokio::select! {
                 event = state_rx.recv() => match event {
                     Ok(event) => write_state_reply(&mut write_half, &event).await?,
-                    Err(RecvError::Lagged(missed)) => eprintln!("{missed} missed state events"),
+                    Err(RecvError::Lagged(missed)) => warn!("{missed} missed state events"),
                     Err(RecvError::Closed) => break,
                 },
                 // The client closes the connection once it has its event, so
