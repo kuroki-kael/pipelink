@@ -39,18 +39,19 @@ jobs:
 
       - name: Build and test workspace
         run: |
-          cargo test --workspace --locked
+          cargo test --workspace --all-features --locked
           cargo build --release -p pipelink --locked
 
       - name: Build .deb and .tar.gz packages
         run: |
-          ./packaging/debian/build-deb.sh dist
           VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)"
           ARCH="$(uname -m)"
           STAGE_DIR="$(mktemp -d)"
           trap 'rm -rf "$STAGE_DIR"' EXIT
           make install DESTDIR="$STAGE_DIR" PREFIX=/usr
+          mkdir -p dist
           tar -C "$STAGE_DIR" -czf "dist/pipelink-${VERSION}-linux-${ARCH}.tar.gz" .
+          ./packaging/debian/build-deb.sh dist
           (cd dist && sha256sum * > SHA256SUMS)
           ls -lh dist/
 

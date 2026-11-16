@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PipeLink
+GenericName=Audio Routing Mixer
+Comment=Virtual PipeWire/JACK audio routing daemon and graphical mixer
+Exec=pipelink --gui
+Icon=pipelink
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+Keywords=audio;mixer;pipewire;jack;routing;
+StartupWMClass=pipelink
