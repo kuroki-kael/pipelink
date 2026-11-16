@@ -2,6 +2,8 @@
 
 A virtual PipeWire/JACK audio routing daemon and CLI for Linux.
 
+> **Source & Mirror:** The primary repository (origin, issues, pull requests, CI, and package registries) is hosted on [Codeberg](https://codeberg.org/kuroki-kael/pipelink). [GitHub](https://github.com/kuroki-kael/pipelink) is an automated mirror with mirrored releases.
+
 PipeLink creates persistent virtual stereo PipeWire channels (`System`, `Music`, `Games`, `Voice`, etc.), mixes them into one or more named output mixes (`Personal`, `Stream`, ...), routes applications automatically into channels, manages per-route gain and mute state, handles physical output failover, and can set WirePlumber's default audio sink.
 
 ## Features
