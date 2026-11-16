@@ -72,7 +72,7 @@ publish_codeberg() {
   fi
 
   CARGO_REGISTRIES_CODEBERG_INDEX="sparse+https://codeberg.org/api/packages/${OWNER}/cargo/" \
-  CARGO_REGISTRIES_CODEBERG_TOKEN="${PACKAGE_TOKEN}" \
+  CARGO_REGISTRIES_CODEBERG_TOKEN="Bearer ${PACKAGE_TOKEN}" \
     cargo publish -p "$name" --registry codeberg --locked
   echo "Published ${name} ${version} to Codeberg Cargo registry"
 }

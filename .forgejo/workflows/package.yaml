@@ -92,6 +92,14 @@ jobs:
           TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
           ./.forgejo/scripts/upload-release-assets.sh "$TAG" "${{ github.repository }}" dist/*
 
+      - name: Mirror Debian/Tarball assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
+          ./.forgejo/scripts/upload-github-release.sh "$TAG" "${{ github.repository }}" dist/*
+
   package-arch:
     name: Build & Publish Arch Package
     runs-on: archlinux
@@ -167,6 +175,14 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
           ./.forgejo/scripts/upload-release-assets.sh "$TAG" "${{ github.repository }}" dist/*
+
+      - name: Mirror Arch assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
+          ./.forgejo/scripts/upload-github-release.sh "$TAG" "${{ github.repository }}" dist/*
 
   publish-cargo:
     name: Publish Cargo Crates
