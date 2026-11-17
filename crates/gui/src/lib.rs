@@ -6,6 +6,7 @@
 //! WaveLink-inspired `iced` graphical routing frontend for `PipeLink`.
 
 mod icons;
+mod instance;
 mod state;
 mod subscription;
 mod theme;
@@ -21,6 +22,8 @@ use state::App;
 /// # Errors
 /// Returns an [`iced::Error`] if creating the window or graphics backend fails.
 pub fn run() -> iced::Result {
+    let _instance_guard = instance::acquire_or_activate();
+
     iced::application(App::boot, App::update, App::view)
         .title("PipeLink")
         .theme(|_: &App| theme::app_theme())
@@ -30,6 +33,11 @@ pub fn run() -> iced::Result {
         })
         .window_size((1180.0, 720.0))
         .centered()
-        .subscription(|_: &App| subscription::daemon_events())
+        .subscription(|_: &App| {
+            iced::Subscription::batch([
+                subscription::daemon_events(),
+                subscription::activation_events(),
+            ])
+        })
         .run()
 }

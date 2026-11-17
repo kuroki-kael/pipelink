@@ -13,8 +13,9 @@ use iced::{
     stream,
 };
 use pipelink_ipc::{ControlClient, UnixSocketClient};
+use tokio::net::UnixListener;
 
-use crate::state::Message;
+use crate::{instance, state::Message};
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 
@@ -22,6 +23,12 @@ const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 /// restarts.
 pub(crate) fn daemon_events() -> Subscription<Message> {
     Subscription::run(event_worker)
+}
+
+/// Listens for single-instance activation pings so secondary launches focus the
+/// existing GUI window.
+pub(crate) fn activation_events() -> Subscription<Message> {
+    Subscription::run(activation_worker)
 }
 
 fn event_worker() -> impl Stream<Item = Message> {
@@ -46,6 +53,24 @@ fn event_worker() -> impl Stream<Item = Message> {
             }
 
             tokio::time::sleep(RECONNECT_DELAY).await;
+        }
+    })
+}
+
+fn activation_worker() -> impl Stream<Item = Message> {
+    stream::channel(16, async |mut output: mpsc::Sender<Message>| {
+        let Some(std_listener) = instance::take_activation_listener() else {
+            return;
+        };
+        if std_listener.set_nonblocking(true).is_err() {
+            return;
+        }
+        let Ok(listener) = UnixListener::from_std(std_listener) else {
+            return;
+        };
+        while let Ok((stream, _)) = listener.accept().await {
+            drop(stream);
+            let _ = output.send(Message::FocusWindow).await;
         }
     })
 }

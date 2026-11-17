@@ -114,5 +114,6 @@ pub(crate) enum Message {
     SubmitRenameMix,
     RemoveMix(MixName),
     RefreshSnapshot,
+    FocusWindow,
     DismissError,
 }

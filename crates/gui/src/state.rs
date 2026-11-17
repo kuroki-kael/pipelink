@@ -224,6 +224,9 @@ impl App {
                 return actions::route_app(self.client.clone(), app, channel);
             },
             Message::UnrouteApp(app) => return actions::unroute_app(self.client.clone(), app),
+            Message::FocusWindow => {
+                return iced::window::oldest().and_then(iced::window::gain_focus);
+            },
             _ => {},
         }
 
