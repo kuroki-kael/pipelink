@@ -55,6 +55,13 @@ pub enum Command {
         node_name: NodeName,
     },
 
+    /// Sets master linear volume and mute flags on a channel's `PipeWire` null-sink.
+    SetChannelNodeProps {
+        node_id: NodeId,
+        linear_volume: f32,
+        muted: bool,
+    },
+
     CreateChannel {
         name: ChannelName,
     },

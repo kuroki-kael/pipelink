@@ -14,13 +14,13 @@ use pipewire::{
     metadata::Metadata,
     node::Node,
     registry::{GlobalObject, RegistryRc},
-    spa::utils::dict::DictRef,
+    spa::{param::ParamType, utils::dict::DictRef},
     types::ObjectType,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, warn};
 
-use super::LoopState;
+use super::{LoopState, node_props};
 use crate::PipewireEvent;
 
 impl LoopState {
@@ -136,6 +136,33 @@ impl LoopState {
             self.stream_listeners
                 .borrow_mut()
                 .insert(id, (node_proxy, Box::new(listener)));
+        } else if is_pipelink_node
+            && dict
+                .get("node.name")
+                .is_some_and(|n| n.starts_with("pipelink.channel."))
+            && let Ok(node_proxy) = registry.bind::<Node, _>(obj)
+        {
+            node_proxy.subscribe_params(&[ParamType::Props]);
+            let tx = event_tx.clone();
+            let listener = node_proxy
+                .add_listener_local()
+                .param(move |_seq, param_id, _index, _next, param| {
+                    if param_id == ParamType::Props
+                        && let Some(pod) = param
+                        && let Some((linear_volume, muted)) = node_props::parse_props_pod(pod)
+                    {
+                        let _ = tx.send(PipewireEvent::ChannelPropsChanged {
+                            node_id: id,
+                            linear_volume,
+                            muted,
+                        });
+                    }
+                })
+                .register();
+
+            self.channel_listeners
+                .borrow_mut()
+                .insert(id, (node_proxy, Box::new(listener)));
         }
     }
 
@@ -188,6 +215,7 @@ impl LoopState {
 
     pub(crate) fn global_removed(&self, id: GlobalId, event_tx: &UnboundedSender<PipewireEvent>) {
         self.stream_listeners.borrow_mut().remove(&id.0);
+        self.channel_listeners.borrow_mut().remove(&id.0);
         let _ = event_tx.send(PipewireEvent::GlobalRemoved { id });
     }
 }

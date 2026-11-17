@@ -2,6 +2,7 @@
  * Copyright (c) 2026 Kuroki-Kael / PipeLink Contributors.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+mod node_props;
 mod registry;
 
 use std::{any::Any, cell::RefCell, collections::HashMap};
@@ -27,6 +28,7 @@ pub(crate) struct LoopState {
     active_modules: RefCell<HashMap<MixName, ModuleHandle>>,
     default_metadata: RefCell<Option<MetadataEntry>>,
     stream_listeners: RefCell<HashMap<NodeId, StreamListenerEntry>>,
+    channel_listeners: RefCell<HashMap<NodeId, StreamListenerEntry>>,
 }
 
 impl LoopState {
@@ -77,32 +79,19 @@ impl LoopState {
                 node_id,
                 target_serial,
                 label,
-            } => {
-                // set target.object to target channel serial on the stream node
-                if let Some((metadata, _)) = self.default_metadata.borrow().as_ref() {
-                    let serial_str = target_serial.to_string();
-                    metadata.set_property(
-                        node_id.0,
-                        "target.object",
-                        Some("Spa:Id"),
-                        Some(&serial_str),
-                    );
-                    let _ = core.sync(0);
-                    debug!(
-                        "target.object set to {} for {} (node {})",
-                        serial_str, label, node_id
-                    );
-                }
-            },
+            } => self.set_node_target_object(core, node_id, Some((target_serial, &label))),
             Command::ClearNodeRoute { node_id } => {
-                if let Some((metadata, _)) = self.default_metadata.borrow().as_ref() {
-                    metadata.set_property(node_id.0, "target.object", None, None);
-                    let _ = core.sync(0);
-                    debug!("target.object cleared for {}", node_id);
-                }
+                self.set_node_target_object(core, node_id, None);
             },
             Command::SetDefaultSink { node_name } => {
                 self.set_default_sink(core, node_name, event_tx);
+            },
+            Command::SetChannelNodeProps {
+                node_id,
+                linear_volume,
+                muted,
+            } => {
+                self.set_channel_node_props(core, node_id, linear_volume, muted);
             },
             Command::CreateMix { name } => match factory::create_loopback(context, &name) {
                 Ok(module) => {
@@ -139,6 +128,55 @@ impl LoopState {
                 }
             },
             Command::SetMixRoute { .. } | Command::LoadInput { .. } => {},
+        }
+    }
+
+    fn set_node_target_object(
+        &self,
+        core: &Core,
+        node_id: NodeId,
+        target: Option<(pipelink_common::types::NodeSerial, &str)>,
+    ) {
+        let borrowed = self.default_metadata.borrow();
+        let Some((metadata, _)) = borrowed.as_ref() else {
+            return;
+        };
+        if let Some((serial, label)) = target {
+            let serial_str = serial.to_string();
+            metadata.set_property(
+                node_id.0,
+                "target.object",
+                Some("Spa:Id"),
+                Some(&serial_str),
+            );
+            let _ = core.sync(0);
+            debug!("target.object set to {serial_str} for {label} (node {node_id})");
+        } else {
+            metadata.set_property(node_id.0, "target.object", None, None);
+            let _ = core.sync(0);
+            debug!("target.object cleared for {node_id}");
+        }
+    }
+
+    fn set_channel_node_props(
+        &self,
+        core: &Core,
+        node_id: NodeId,
+        linear_volume: f32,
+        muted: bool,
+    ) {
+        let borrowed = self.channel_listeners.borrow();
+        let Some((node, _)) = borrowed.get(&node_id) else {
+            warn!("Cannot set Props on unbound channel node {node_id}");
+            return;
+        };
+        let Some(bytes) = node_props::build_props_pod(linear_volume, muted) else {
+            warn!("Failed to serialize SPA Props pod for node {node_id}");
+            return;
+        };
+        if let Some(pod) = pipewire::spa::pod::Pod::from_bytes(&bytes) {
+            node.set_param(pipewire::spa::param::ParamType::Props, 0, pod);
+            let _ = core.sync(0);
         }
     }
 

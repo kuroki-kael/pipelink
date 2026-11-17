@@ -149,4 +149,15 @@ pub enum PipewireEvent {
         /// Human readable reason of the failure.
         reason: String,
     },
+
+    /// `PipeWire` reported updated `Props` (`channelVolumes` / `mute`) for a channel
+    /// node.
+    ChannelPropsChanged {
+        /// Node ID of the channel null-sink.
+        node_id: NodeId,
+        /// Linear channel volume reported in `Props`, if present.
+        linear_volume: Option<f32>,
+        /// Mute state reported in `Props`, if present.
+        muted: Option<bool>,
+    },
 }
