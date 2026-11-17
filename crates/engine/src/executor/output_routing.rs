@@ -181,7 +181,7 @@ impl Executor {
         }
     }
 
-    fn set_active_mix(&mut self, mix: Option<MixName>) {
+    pub(in crate::executor) fn set_active_mix(&mut self, mix: Option<MixName>) {
         if self.graph.active_mix != mix {
             self.storage.mark_state_dirty();
         }

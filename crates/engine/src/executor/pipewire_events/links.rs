@@ -42,11 +42,14 @@ impl Executor {
                     let ch_name = ch.name.clone();
                     info!("Channel '{ch_name}' is ready");
                     self.pending_channel_creates.remove(&ch_name);
-                    // The graph entry is optimistic, the ChannelAdded event is sent once
-                    // PipeWire has registered all ports and stereo links to JACK.
-                    let _ = self
-                        .state_tx
-                        .send(StateEvent::ChannelAdded { channel: ch_name });
+                    if !self.finish_pending_channel_rename(&ch_name) {
+                        // The graph entry is optimistic, the ChannelAdded event is sent
+                        // once PipeWire has registered all ports and stereo links to
+                        // JACK.
+                        let _ = self
+                            .state_tx
+                            .send(StateEvent::ChannelAdded { channel: ch_name });
+                    }
                 }
                 return;
             }
@@ -59,9 +62,11 @@ impl Executor {
                     let mix_name = m.name.clone();
                     info!("Mix '{mix_name}' is ready");
                     self.pending_mix_creates.remove(&mix_name);
-                    // The graph entry is optimistic, the MixAdded event is sent once
-                    // PipeWire has registered all ports and stereo links from JACK.
-                    let _ = self.state_tx.send(StateEvent::MixAdded { mix: mix_name });
+                    if !self.finish_pending_mix_rename(&mix_name) {
+                        // The graph entry is optimistic, the MixAdded event is sent once
+                        // PipeWire has registered all ports and stereo links from JACK.
+                        let _ = self.state_tx.send(StateEvent::MixAdded { mix: mix_name });
+                    }
                 }
                 return;
             }

@@ -146,6 +146,20 @@ impl Executor {
         reason: &str,
     ) {
         self.graph.remove_channel(&name);
+        if let Some(rename) = self.pending_channel_renames.remove(&name) {
+            if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
+                warn!("Failed to remove JACK channel '{name}': {err}");
+            }
+            warn!(
+                "Channel rename '{}' -> '{name}' failed: {reason}",
+                rename.old_name
+            );
+            let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
+                channel: rename.old_name,
+                error: reason.to_string(),
+            });
+            return;
+        }
         let newly_created = self.pending_channel_creates.remove(&name);
         self.clear_channel_app_routes(&name, newly_created);
         if let Err(err) = self.jack.remove_channel(&name, self.graph.gains_snapshot()) {
@@ -177,6 +191,20 @@ impl Executor {
     /// out again once the creation fails.
     pub(in crate::executor) fn on_mix_creation_failed(&mut self, name: MixName, reason: &str) {
         self.graph.remove_mix(&name);
+        if let Some(rename) = self.pending_mix_renames.remove(&name) {
+            if let Err(err) = self.jack.remove_mix(&name, self.graph.gains_snapshot()) {
+                warn!("Failed to remove JACK mix '{name}': {err}");
+            }
+            warn!(
+                "Mix rename '{}' -> '{name}' failed: {reason}",
+                rename.old_name
+            );
+            let _ = self.state_tx.send(StateEvent::MixOperationFailed {
+                mix: rename.old_name,
+                error: reason.to_string(),
+            });
+            return;
+        }
         if self.pending_mix_creates.remove(&name) && self.config.remove_mix(&name) {
             self.storage.save_config(&self.config);
         }

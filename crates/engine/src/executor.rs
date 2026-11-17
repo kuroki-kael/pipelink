@@ -3,12 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::{collections::HashSet, fmt, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    time::Duration,
+};
 
 use pipelink_common::{
     error::ExecutorError,
     events::{ControlReply, StateEvent},
-    graph::{audio_graph::AudioGraph, channel::Channel},
+    graph::{audio_graph::AudioGraph, channel::Channel, mix::Mix},
     types::{ChannelName, MixName},
 };
 pub use pipelink_ipc::Envelope;
@@ -37,9 +41,29 @@ mod output_routing;
 mod pipewire_events;
 mod query_events;
 
+#[derive(Debug, Clone)]
+pub(super) struct PendingChannelRename {
+    pub(super) old_name: ChannelName,
+    pub(super) old_idx: usize,
+    pub(super) was_default: bool,
+}
+
 #[derive(Debug)]
 pub(super) struct DeferredChannelDestroy {
     pub(super) channel: Channel,
+    pub(super) retire_at: tokio::time::Instant,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct PendingMixRename {
+    pub(super) old_name: MixName,
+    pub(super) old_idx: usize,
+    pub(super) was_active: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct DeferredMixDestroy {
+    pub(super) mix: Mix,
     pub(super) retire_at: tokio::time::Instant,
 }
 
@@ -51,8 +75,11 @@ pub struct Executor {
     pending_channel_creates: HashSet<ChannelName>,
     pending_mix_creates: HashSet<MixName>,
     pending_channel_removals: HashSet<ChannelName>,
+    pending_channel_renames: HashMap<ChannelName, PendingChannelRename>,
     deferred_channel_destroys: Vec<DeferredChannelDestroy>,
     pending_mix_removals: HashSet<MixName>,
+    pending_mix_renames: HashMap<MixName, PendingMixRename>,
+    deferred_mix_destroys: Vec<DeferredMixDestroy>,
     control_rx: Receiver<Envelope>,
     state_tx: Broadcast<StateEvent>,
     pw_service: Option<PipewireService>,
@@ -120,8 +147,11 @@ impl Executor {
             pending_channel_creates: HashSet::new(),
             pending_mix_creates: HashSet::new(),
             pending_channel_removals: HashSet::new(),
+            pending_channel_renames: HashMap::new(),
             deferred_channel_destroys: Vec::new(),
             pending_mix_removals: HashSet::new(),
+            pending_mix_renames: HashMap::new(),
+            deferred_mix_destroys: Vec::new(),
             control_rx,
             state_tx,
             pw_service: Some(pw_service),

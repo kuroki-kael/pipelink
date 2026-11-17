@@ -6,6 +6,8 @@
 //! Handling of the control events that steer the audio graph.
 
 mod channels;
+mod rename_channel;
+mod rename_mix;
 mod routes;
 
 use std::time::Duration;
@@ -156,6 +158,7 @@ impl Executor {
             return Ok(());
         }
 
+        self.flush_deferred_mix_destroy(&name)?;
         if let Err(err) = self
             .pw_tx
             .send(PipewireCommand::CreateMix { name: name.clone() })
@@ -222,43 +225,31 @@ impl Executor {
         Ok(())
     }
 
-    /// Returns the earliest deadline at which a retiring channel `PipeWire` node should
+    /// Returns the earliest deadline at which a retiring `PipeWire` node/loopback should
     /// be destroyed.
     pub(in crate::executor) fn next_deferred_destroy_deadline(
         &self,
     ) -> Option<tokio::time::Instant> {
-        self.deferred_channel_destroys
+        let ch_min = self
+            .deferred_channel_destroys
             .iter()
             .map(|entry| entry.retire_at)
-            .min()
+            .min();
+        let mix_min = self
+            .deferred_mix_destroys
+            .iter()
+            .map(|entry| entry.retire_at)
+            .min();
+        match (ch_min, mix_min) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
-    /// Destroys any retiring channel nodes whose grace period has elapsed.
+    /// Destroys any old channel nodes and mix loopbacks whose grace period has elapsed.
     pub(in crate::executor) fn flush_due_deferred_destroys(&mut self) -> Result<(), ExecutorError> {
         let now = tokio::time::Instant::now();
-        self.flush_deferred_channels_where(|entry| entry.retire_at <= now)
-    }
-
-    fn flush_deferred_channel_destroy(&mut self, name: &ChannelName) -> Result<(), ExecutorError> {
-        self.flush_deferred_channels_where(|entry| entry.channel.name.eq_ignore_ascii_case(name))
-    }
-
-    fn flush_deferred_channels_where(
-        &mut self,
-        predicate: impl Fn(&DeferredChannelDestroy) -> bool,
-    ) -> Result<(), ExecutorError> {
-        let pending = std::mem::take(&mut self.deferred_channel_destroys);
-        for entry in pending {
-            if predicate(&entry) {
-                self.pw_tx
-                    .send(PipewireCommand::DeleteChannel {
-                        channel: entry.channel,
-                    })
-                    .map_err(|e| ExecutorError::Pipewire(format!("{e:?}")))?;
-            } else {
-                self.deferred_channel_destroys.push(entry);
-            }
-        }
-        Ok(())
+        self.flush_deferred_where(|entry| entry.retire_at <= now)?;
+        self.flush_deferred_mixes_where(|entry| entry.retire_at <= now)
     }
 }

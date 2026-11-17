@@ -46,6 +46,12 @@ impl Executor {
             ControlEvent::SetChannelMasterMute { channel, muted } => {
                 self.on_set_channel_master_mute(&channel, muted);
             },
+            ControlEvent::RenameChannel { old_name, new_name } => {
+                self.on_rename_channel(&old_name, &new_name)?;
+            },
+            ControlEvent::RenameMix { old_name, new_name } => {
+                self.on_rename_mix(&old_name, &new_name)?;
+            },
             ControlEvent::MoveChannel { channel, to_index } => {
                 self.on_move_channel(&channel, to_index)?;
             },

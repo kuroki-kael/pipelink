@@ -126,6 +126,26 @@ impl ConfigGraph {
         true
     }
 
+    /// Renames `old_name` to `new_name` in place across channels and mix member lists.
+    pub fn rename_channel(&mut self, old_name: &ChannelName, new_name: &ChannelName) -> bool {
+        let Some(ch) = self
+            .channels
+            .iter_mut()
+            .find(|ch| ch.name.eq_ignore_ascii_case(old_name))
+        else {
+            return false;
+        };
+        ch.name = new_name.clone();
+        for mix in &mut self.mixes {
+            for member in &mut mix.channels {
+                if member.eq_ignore_ascii_case(old_name) {
+                    *member = new_name.clone();
+                }
+            }
+        }
+        true
+    }
+
     /// Ensures a mix entry exists in [`ConfigGraph::mixes`] (case-insensitive).
     pub fn ensure_mix(&mut self, name: &MixName) {
         if !self.mixes.iter().any(|m| m.name.eq_ignore_ascii_case(name)) {
@@ -141,6 +161,27 @@ impl ConfigGraph {
         let before = self.mixes.len();
         self.mixes.retain(|m| !m.name.eq_ignore_ascii_case(name));
         self.mixes.len() != before
+    }
+
+    /// Renames mix `old_name` to `new_name` in place (and updates `active_mix` if it
+    /// points to `old_name`).
+    pub fn rename_mix(&mut self, old_name: &MixName, new_name: &MixName) -> bool {
+        let Some(mix) = self
+            .mixes
+            .iter_mut()
+            .find(|m| m.name.eq_ignore_ascii_case(old_name))
+        else {
+            return false;
+        };
+        mix.name = new_name.clone();
+        if self
+            .active_mix
+            .as_ref()
+            .is_some_and(|active| active.eq_ignore_ascii_case(old_name))
+        {
+            self.active_mix = Some(new_name.clone());
+        }
+        true
     }
 
     /// Records an active `channel -> mix` route in [`ConfigGraph::mixes`].

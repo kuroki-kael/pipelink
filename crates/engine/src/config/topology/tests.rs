@@ -89,3 +89,30 @@ fn test_starter_default_topology() {
     .map_err(|e| e.to_string());
     assert_eq!(example, Ok(cfg));
 }
+
+#[test]
+fn test_rename_channel_updates_channels_mixes_and_app_rules() {
+    let mut cfg = ConfigGraph::starter_default();
+    let music = ChannelName::from("Music");
+    let chill = ChannelName::from("Chill");
+    let lounge = ChannelName::from("Lounge");
+    assert!(cfg.set_app_route(AppDisplay::from("Spotify"), &music));
+
+    assert!(cfg.rename_channel(&music, &chill));
+    assert!(cfg.channels.iter().any(|c| c.name == chill));
+    assert_eq!(cfg.find_app_channel("Spotify"), Some(&chill));
+    assert!(cfg.mixes[0].channels.iter().any(|c| c == &chill));
+
+    // Renaming a second time back to a previously used name succeeds cleanly.
+    assert!(cfg.rename_channel(&chill, &lounge));
+    assert!(cfg.rename_channel(&lounge, &music));
+    assert!(cfg.channels.iter().any(|c| c.name == music));
+    assert_eq!(cfg.find_app_channel("Spotify"), Some(&music));
+
+    let personal = MixName::from("Personal");
+    let main = MixName::from("Main");
+    cfg.active_mix = Some(personal.clone());
+    assert!(cfg.rename_mix(&personal, &main));
+    assert_eq!(cfg.mixes[0].name, main);
+    assert_eq!(cfg.active_mix.as_ref(), Some(&main));
+}
