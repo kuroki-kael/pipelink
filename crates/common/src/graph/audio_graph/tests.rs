@@ -184,3 +184,61 @@ fn test_case_insensitive_route_lookup_preserves_original_casing() {
             .active
     );
 }
+
+#[test]
+fn test_move_channel_keeps_matrix_rows_aligned() {
+    let mut graph = AudioGraph::new();
+    for c in ["c0", "c1", "c2"] {
+        graph.add_channel(ch(c)).unwrap();
+    }
+    for m in ["m0", "m1"] {
+        graph.add_mix(mix(m)).unwrap();
+    }
+
+    graph.get_route_mut(&ch("c0"), &mix("m0")).unwrap().gain = 0.1;
+    graph.get_route_mut(&ch("c1"), &mix("m0")).unwrap().gain = 0.5;
+    graph.get_route_mut(&ch("c2"), &mix("m0")).unwrap().gain = 0.9;
+    graph.get_route_mut(&ch("c2"), &mix("m1")).unwrap().active = true;
+
+    assert_eq!(graph.move_channel(&ch("c2"), 0), Some((2, 0)));
+    assert_eq!(
+        graph
+            .channels()
+            .iter()
+            .map(|c| c.name.as_ref())
+            .collect::<Vec<_>>(),
+        vec!["c2", "c0", "c1"]
+    );
+    assert!((graph.get_route(&ch("c2"), &mix("m0")).unwrap().gain - 0.9).abs() < f32::EPSILON);
+    assert!(graph.get_route(&ch("c2"), &mix("m1")).unwrap().active);
+    assert!((graph.get_route(&ch("c0"), &mix("m0")).unwrap().gain - 0.1).abs() < f32::EPSILON);
+    assert!((graph.get_route(&ch("c1"), &mix("m0")).unwrap().gain - 0.5).abs() < f32::EPSILON);
+}
+
+#[test]
+fn test_move_mix_keeps_matrix_columns_aligned() {
+    let mut graph = AudioGraph::new();
+    for c in ["c0", "c1"] {
+        graph.add_channel(ch(c)).unwrap();
+    }
+    for m in ["m0", "m1", "m2"] {
+        graph.add_mix(mix(m)).unwrap();
+    }
+
+    graph.get_route_mut(&ch("c0"), &mix("m2")).unwrap().gain = 0.25;
+    graph.get_route_mut(&ch("c1"), &mix("m2")).unwrap().active = true;
+    graph.get_route_mut(&ch("c1"), &mix("m0")).unwrap().gain = 0.8;
+
+    assert_eq!(graph.move_mix(&mix("m2"), 0), Some((2, 0)));
+    assert_eq!(
+        graph
+            .mixes()
+            .iter()
+            .map(|m| m.name.as_ref())
+            .collect::<Vec<_>>(),
+        vec!["m2", "m0", "m1"]
+    );
+    assert!((graph.get_route(&ch("c0"), &mix("m2")).unwrap().gain - 0.25).abs() < f32::EPSILON);
+    assert!(graph.get_route(&ch("c1"), &mix("m2")).unwrap().active);
+    assert!((graph.get_route(&ch("c1"), &mix("m0")).unwrap().gain - 0.8).abs() < f32::EPSILON);
+}

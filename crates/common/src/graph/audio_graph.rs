@@ -157,6 +157,37 @@ impl AudioGraph {
         Some(self.channels.remove(channel_idx))
     }
 
+    /// Moves `channel` to `to_index` (clamped to `self.channels.len() - 1`) while
+    /// keeping its matrix row aligned, returning `(from_idx, actual_to_idx)`.
+    pub fn move_channel(
+        &mut self,
+        channel: &ChannelName,
+        to_index: usize,
+    ) -> Option<(usize, usize)> {
+        let from_idx = self.channel_index(channel)?;
+        let last_idx = self.channels.len().checked_sub(1)?;
+        let actual_to = to_index.min(last_idx);
+        if from_idx == actual_to {
+            return Some((from_idx, actual_to));
+        }
+
+        let ch = self.channels.remove(from_idx);
+        self.channels.insert(actual_to, ch);
+
+        let num_mixes = self.mixes.len();
+        if num_mixes > 0 {
+            let from_start = from_idx * num_mixes;
+            let row: Vec<_> = self
+                .ch_mix_matrix
+                .drain(from_start..from_start + num_mixes)
+                .collect();
+            let to_start = actual_to * num_mixes;
+            self.ch_mix_matrix.splice(to_start..to_start, row);
+        }
+
+        Some((from_idx, actual_to))
+    }
+
     /// Adds a new mix and inserts its routing column across all existing channels.
     ///
     /// # Errors
@@ -204,6 +235,29 @@ impl AudioGraph {
         }
 
         Some(self.mixes.remove(mix_idx))
+    }
+
+    /// Reorders `mix` to `to_index` (clamped to `self.mixes.len() - 1`) while keeping all
+    /// channel matrix columns aligned, returning `(from_idx, actual_to_idx)`.
+    pub fn move_mix(&mut self, mix: &MixName, to_index: usize) -> Option<(usize, usize)> {
+        let from_idx = self.mix_index(mix)?;
+        let last_idx = self.mixes.len().checked_sub(1)?;
+        let actual_to = to_index.min(last_idx);
+        if from_idx == actual_to {
+            return Some((from_idx, actual_to));
+        }
+
+        let moved = self.mixes.remove(from_idx);
+        self.mixes.insert(actual_to, moved);
+
+        let num_mixes = self.mixes.len();
+        for row in 0..self.channels.len() {
+            let row_start = row * num_mixes;
+            let cell = self.ch_mix_matrix.remove(row_start + from_idx);
+            self.ch_mix_matrix.insert(row_start + actual_to, cell);
+        }
+
+        Some((from_idx, actual_to))
     }
 
     #[inline]

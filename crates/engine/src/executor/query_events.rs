@@ -154,6 +154,7 @@ fn collect_mix_routes(graph: &AudioGraph) -> Vec<MixRouteInfo> {
 fn build_graph_snapshot(graph: &AudioGraph, config: &ConfigGraph) -> GraphSnapshot {
     GraphSnapshot {
         channels: graph.channels().iter().map(|c| c.name.clone()).collect(),
+        channel_volumes: Vec::new(),
         mixes: graph.mixes().iter().map(|m| m.name.clone()).collect(),
         active_mix: graph.active_mix.clone(),
         default_sink: graph.default_sink.clone(),

@@ -133,12 +133,40 @@ pub enum StateEvent {
         /// Reason the default sink update failed.
         error: String,
     },
+    /// Master volume or mute on a channel's `PipeWire` null-sink changed.
+    ChannelMasterChanged {
+        /// Affected channel name.
+        channel: ChannelName,
+        /// Master volume percentage (`100.0` = unity).
+        percent: f32,
+        /// Whether the channel's null-sink is muted.
+        muted: bool,
+    },
+    /// An existing channel was renamed while preserving its routes.
+    ChannelRenamed {
+        /// Previous channel name.
+        old_name: ChannelName,
+        /// New canonical channel name.
+        new_name: ChannelName,
+    },
+    /// Channel ordering in config and routing matrix changed.
+    ChannelsReordered {
+        /// Ordered list of channel names.
+        channels: Vec<ChannelName>,
+    },
     /// Invoking any change for a channel failed.
     ChannelOperationFailed {
         /// Affected channel name.
         channel: ChannelName,
         /// Reason the operation failed.
         error: String,
+    },
+    /// An existing mix was renamed while preserving its routes and gains.
+    MixRenamed {
+        /// Previous mix name.
+        old_name: MixName,
+        /// New canonical mix name.
+        new_name: MixName,
     },
     /// Invoking any change for a mix failed.
     MixOperationFailed {

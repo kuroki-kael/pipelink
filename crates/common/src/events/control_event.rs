@@ -31,10 +31,38 @@ pub enum ControlEvent {
         /// Whether the channel should be muted.
         muted: bool,
     },
+    /// Sets master gain percentage on a channel's `PipeWire` null-sink (`0.0`..=`200.0`).
+    SetChannelMasterVolume {
+        /// Target channel name.
+        channel: ChannelName,
+        /// Master volume percentage (`100.0` = unity).
+        percent: f32,
+    },
+    /// Sets master mute state on a channel's `PipeWire` null-sink.
+    SetChannelMasterMute {
+        /// Target channel name.
+        channel: ChannelName,
+        /// Whether the null-sink should be muted.
+        muted: bool,
+    },
     /// Requests creation of a new audio channel.
     CreateChannel {
         /// Channel name to create.
         name: ChannelName,
+    },
+    /// Requests renaming an existing channel while preserving its mix and app routes.
+    RenameChannel {
+        /// Existing channel name.
+        old_name: ChannelName,
+        /// Desired new channel name.
+        new_name: ChannelName,
+    },
+    /// Reorders a channel to a target display index.
+    MoveChannel {
+        /// Channel name to move.
+        channel: ChannelName,
+        /// Zero-based destination row index.
+        to_index: usize,
     },
     /// Requests removal of an audio channel.
     RemoveChannel {
@@ -45,6 +73,13 @@ pub enum ControlEvent {
     CreateMix {
         /// Mix name to create.
         name: MixName,
+    },
+    /// Requests renaming an existing mix while preserving channel routes and gains.
+    RenameMix {
+        /// Existing mix name.
+        old_name: MixName,
+        /// Desired new mix name.
+        new_name: MixName,
     },
     /// Requests removal of an audio mix.
     RemoveMix {

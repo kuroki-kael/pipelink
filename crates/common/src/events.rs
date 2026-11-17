@@ -11,7 +11,8 @@ mod state_event;
 
 pub use control_event::ControlEvent;
 pub use control_reply::{
-    ActiveAppInfo, ControlReply, GraphSnapshot, InstalledAppInfo, MixRouteInfo, OutputDeviceInfo,
+    ActiveAppInfo, ChannelVolumeInfo, ControlReply, GraphSnapshot, InstalledAppInfo, MixRouteInfo,
+    OutputDeviceInfo,
 };
 pub use state_event::StateEvent;
 

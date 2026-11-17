@@ -78,11 +78,25 @@ pub struct InstalledAppInfo {
     pub exec_bin: Option<String>,
 }
 
+/// Master volume and mute state for a channel's `PipeWire` null-sink.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChannelVolumeInfo {
+    /// Channel name.
+    pub channel: ChannelName,
+    /// Master volume percentage (`100.0` = unity).
+    pub volume_percent: f32,
+    /// Whether the channel's null-sink is muted.
+    pub muted: bool,
+}
+
 /// Complete snapshot of the routing topology, mixer cells, outputs, and app routes.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GraphSnapshot {
     /// Configured channel names.
     pub channels: Vec<ChannelName>,
+    /// Per-channel null-sink master volume and mute states.
+    #[serde(default)]
+    pub channel_volumes: Vec<ChannelVolumeInfo>,
     /// Configured mix names.
     pub mixes: Vec<MixName>,
     /// Globally active mix driving the audio output, if any.

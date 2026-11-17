@@ -13,10 +13,15 @@ use crate::{
 };
 
 /// Channel node backed by a `Pipewire` `support.null-audio-sink` adapter.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Channel {
+    /// Channel name.
     pub name: ChannelName,
     pub node: Node,
+    /// Master volume percentage on the channel's `PipeWire` null-sink (`100.0` = unity).
+    pub volume_percent: f32,
+    /// Whether the channel's `PipeWire` null-sink itself is muted.
+    pub muted: bool,
     /// `PipeLink` `JACK` input port IDs (`in_{name}_FL` / `FR`).
     pub jack_ports: StereoPortPair,
     /// Stereo links from this channel's output ports to `jack_ports`.
@@ -27,8 +32,23 @@ pub struct Channel {
     pub added_emitted: bool,
 }
 
+impl Default for Channel {
+    fn default() -> Self {
+        Self {
+            name: ChannelName::default(),
+            node: Node::default(),
+            volume_percent: 100.0,
+            muted: false,
+            jack_ports: StereoPortPair::default(),
+            links: StereoLink::default(),
+            links_requested: false,
+            added_emitted: false,
+        }
+    }
+}
+
 impl Channel {
-    /// Creates a new `Channel`.
+    /// Creates a new `Channel` named `name`.
     pub fn new(name: impl Into<ChannelName>) -> Self {
         Self {
             name: name.into(),
