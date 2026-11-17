@@ -34,7 +34,9 @@ impl App {
                         .size(12)
                         .color(theme::TEXT_MUTED)
                         .width(Length::Fill)
-                        .align_x(iced::alignment::Horizontal::Center),
+                        .height(Length::Fill)
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .align_y(iced::alignment::Vertical::Center),
                 )
                 .on_press(Message::ToggleRoute {
                     channel: channel.clone(),
@@ -42,10 +44,12 @@ impl App {
                     active: true,
                 })
                 .width(Length::Fill)
+                .height(Length::Fill)
                 .padding([12, 10])
                 .style(theme::nav_button(false)),
             )
             .width(col_width)
+            .height(Length::Fill)
             .padding(4)
             .style(theme::inactive_cell_style)
             .into();
@@ -102,6 +106,8 @@ impl App {
                 .align_y(Alignment::Center),
         )
         .width(col_width)
+        .height(Length::Fill)
+        .align_y(Alignment::Center)
         .padding([10, 12])
         .style(theme::cell_style)
         .into()
