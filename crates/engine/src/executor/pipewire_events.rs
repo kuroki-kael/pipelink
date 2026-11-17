@@ -14,9 +14,10 @@ use pipelink_common::{
         ChannelPosition, MediaClass, NodeId, NodeName, NodeSerial, Pid, PortDirection, PortId,
     },
 };
+use pipelink_pw::Command as PipewireCommand;
 use tracing::info;
 
-use crate::executor::Executor;
+use crate::{config::state::pw_percent_to_linear, executor::Executor};
 
 impl Executor {
     /// Registers a newly appeared node on the channel, mix, output sink, or `JACK`
@@ -50,11 +51,18 @@ impl Executor {
                 ch.node.id = Some(id);
                 ch.node.serial = serial;
                 info!("Channel '{}' has the id {id}", ch.name);
-                Some(ch.name.clone())
+                Some((ch.name.clone(), ch.volume_percent, ch.muted))
             } else {
                 None
             };
-            if let Some(ch_name) = synced_channel {
+            if let Some((ch_name, vol, muted)) = synced_channel {
+                if (vol - 100.0).abs() > 0.1 || muted {
+                    let _ = self.pw_tx.send(PipewireCommand::SetChannelNodeProps {
+                        node_id: id,
+                        linear_volume: pw_percent_to_linear(vol),
+                        muted,
+                    });
+                }
                 self.sync_channel_app_routes(&ch_name);
             }
         } else if let Some(mix_part) = name.strip_prefix("pipelink.mix.") {

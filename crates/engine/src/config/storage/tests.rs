@@ -49,6 +49,7 @@ fn test_storage_round_trip_and_corrupt_backup() {
             gain_percent: 75.0,
             muted: true,
         }],
+        ..Default::default()
     };
     paths.save_state(&state).unwrap();
     assert_eq!(paths.load_state(), state);

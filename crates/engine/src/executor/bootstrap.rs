@@ -16,7 +16,7 @@ use tracing::{info, warn};
 
 use crate::{
     config::{
-        state::{RuntimeState, percent_to_linear},
+        state::{RuntimeState, normalize_channel_percent, percent_to_linear},
         topology::ConfigGraph,
     },
     executor::Executor,
@@ -120,6 +120,17 @@ pub(super) fn apply_persisted_routes(
         }
     }
 
+    for ch_state in &state.channels {
+        if let Some(ch) = graph
+            .channels_mut()
+            .iter_mut()
+            .find(|c| c.name.eq_ignore_ascii_case(&ch_state.channel))
+        {
+            ch.volume_percent = normalize_channel_percent(ch_state.volume_percent);
+            ch.muted = ch_state.muted;
+        }
+    }
+
     state
         .active_mix
         .as_ref()
@@ -166,6 +177,7 @@ mod tests {
                 gain_percent: 50.0,
                 muted: true,
             }],
+            ..Default::default()
         };
 
         let active = apply_persisted_routes(&cfg, &state, &mut graph);

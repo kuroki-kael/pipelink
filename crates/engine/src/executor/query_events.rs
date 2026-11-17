@@ -4,7 +4,8 @@
  */
 use pipelink_common::{
     events::{
-        ActiveAppInfo, ControlEvent, ControlReply, GraphSnapshot, MixRouteInfo, OutputDeviceInfo,
+        ActiveAppInfo, ChannelVolumeInfo, ControlEvent, ControlReply, GraphSnapshot, MixRouteInfo,
+        OutputDeviceInfo,
     },
     graph::audio_graph::AudioGraph,
     types::{ChannelName, MixName},
@@ -154,7 +155,15 @@ fn collect_mix_routes(graph: &AudioGraph) -> Vec<MixRouteInfo> {
 fn build_graph_snapshot(graph: &AudioGraph, config: &ConfigGraph) -> GraphSnapshot {
     GraphSnapshot {
         channels: graph.channels().iter().map(|c| c.name.clone()).collect(),
-        channel_volumes: Vec::new(),
+        channel_volumes: graph
+            .channels()
+            .iter()
+            .map(|c| ChannelVolumeInfo {
+                channel: c.name.clone(),
+                volume_percent: c.volume_percent,
+                muted: c.muted,
+            })
+            .collect(),
         mixes: graph.mixes().iter().map(|m| m.name.clone()).collect(),
         active_mix: graph.active_mix.clone(),
         default_sink: graph.default_sink.clone(),

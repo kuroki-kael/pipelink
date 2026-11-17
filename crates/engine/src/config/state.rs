@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 /// Upper limit for user-configured channel-to-mix gain percentages (+12 dB).
 pub(crate) const MAX_GAIN_PERCENT: f32 = 400.0;
+/// Upper limit for channel null-sink master volume sliders (`0.0..=200.0`).
+pub(crate) const MAX_CHANNEL_VOLUME_PERCENT: f32 = 200.0;
 
 const fn default_gain_percent() -> f32 {
     100.0
@@ -26,6 +28,36 @@ pub(crate) fn normalize_percent(percent: f32) -> f32 {
         0.0
     } else {
         percent.min(MAX_GAIN_PERCENT)
+    }
+}
+
+/// Clamps channel master volume percentages to `0.0..=MAX_CHANNEL_VOLUME_PERCENT`.
+#[inline]
+#[must_use]
+pub(crate) fn normalize_channel_percent(percent: f32) -> f32 {
+    if !percent.is_finite() || percent <= 0.0 {
+        0.0
+    } else {
+        percent.min(MAX_CHANNEL_VOLUME_PERCENT)
+    }
+}
+
+/// Converts a channel master percentage to `PipeWire` cubic linear amplitude
+/// (matching `wpctl` / `PulseAudio` perceptual curves).
+#[inline]
+#[must_use]
+pub(crate) fn pw_percent_to_linear(percent: f32) -> f32 {
+    (normalize_channel_percent(percent) / 100.0).powi(3)
+}
+
+/// Converts a `PipeWire` linear node volume back into perceptual percentage (`0..=200`).
+#[inline]
+#[must_use]
+pub(crate) fn pw_linear_to_percent(linear: f32) -> f32 {
+    if !linear.is_finite() || linear <= 0.0 {
+        0.0
+    } else {
+        (linear.cbrt() * 100.0).min(MAX_CHANNEL_VOLUME_PERCENT)
     }
 }
 
@@ -60,6 +92,20 @@ pub struct RouteState {
     pub muted: bool,
 }
 
+/// Persisted master null-sink volume and mute parameters for a single channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ChannelState {
+    /// Channel name.
+    pub channel: ChannelName,
+    /// Master volume percentage (`100.0` = unity, clamped to `0.0..=200.0`).
+    #[serde(default = "default_gain_percent")]
+    pub volume_percent: f32,
+    /// Whether the channel null-sink is muted.
+    #[serde(default)]
+    pub muted: bool,
+}
+
 /// Volatile runtime state stored separately from `ConfigGraph`
 /// (`$XDG_STATE_HOME/pipelink/`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -71,6 +117,9 @@ pub struct RuntimeState {
     /// Non-default gain or mute settings per `(channel, mix)` route.
     #[serde(default)]
     pub routes: Vec<RouteState>,
+    /// Non-default null-sink volume or mute settings per channel.
+    #[serde(default)]
+    pub channels: Vec<ChannelState>,
 }
 
 impl RuntimeState {
@@ -90,9 +139,21 @@ impl RuntimeState {
             })
             .collect();
 
+        let channels = graph
+            .channels()
+            .iter()
+            .filter(|c| (c.volume_percent - 100.0).abs() > 0.1 || c.muted)
+            .map(|c| ChannelState {
+                channel: c.name.clone(),
+                volume_percent: normalize_channel_percent(c.volume_percent),
+                muted: c.muted,
+            })
+            .collect();
+
         Self {
             active_mix: graph.active_mix.clone(),
             routes,
+            channels,
         }
     }
 }
@@ -136,5 +197,27 @@ mod tests {
         assert_eq!(state.routes[0].mix, stream);
         assert!((state.routes[0].gain_percent - 50.0).abs() < f32::EPSILON);
         assert!(state.routes[0].muted);
+    }
+
+    #[test]
+    fn test_pw_cubic_volume_round_trip_and_channel_state_persistence() {
+        assert!((pw_percent_to_linear(100.0) - 1.0).abs() < f32::EPSILON);
+        assert!((pw_percent_to_linear(50.0) - 0.125).abs() < 1e-6);
+        assert!((pw_linear_to_percent(0.125) - 50.0).abs() < 0.01);
+
+        let mut graph = AudioGraph::new();
+        let music = ChannelName::from("Music");
+        let game = ChannelName::from("Game");
+        graph.add_channel(music.clone()).unwrap();
+        graph.add_channel(game).unwrap();
+
+        graph.channels_mut()[0].volume_percent = 65.0;
+        graph.channels_mut()[0].muted = true;
+
+        let state = RuntimeState::from_graph(&graph);
+        assert_eq!(state.channels.len(), 1);
+        assert_eq!(state.channels[0].channel, music);
+        assert!((state.channels[0].volume_percent - 65.0).abs() < f32::EPSILON);
+        assert!(state.channels[0].muted);
     }
 }

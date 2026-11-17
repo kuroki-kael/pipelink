@@ -8,7 +8,7 @@ use std::{collections::HashSet, fmt, time::Duration};
 use pipelink_common::{
     error::ExecutorError,
     events::{ControlReply, StateEvent},
-    graph::audio_graph::AudioGraph,
+    graph::{audio_graph::AudioGraph, channel::Channel},
     types::{ChannelName, MixName},
 };
 pub use pipelink_ipc::Envelope;
@@ -37,6 +37,12 @@ mod output_routing;
 mod pipewire_events;
 mod query_events;
 
+#[derive(Debug)]
+pub(super) struct DeferredChannelDestroy {
+    pub(super) channel: Channel,
+    pub(super) retire_at: tokio::time::Instant,
+}
+
 /// Execution coordinator for the audio graph
 pub struct Executor {
     config: ConfigGraph,
@@ -45,6 +51,7 @@ pub struct Executor {
     pending_channel_creates: HashSet<ChannelName>,
     pending_mix_creates: HashSet<MixName>,
     pending_channel_removals: HashSet<ChannelName>,
+    deferred_channel_destroys: Vec<DeferredChannelDestroy>,
     pending_mix_removals: HashSet<MixName>,
     control_rx: Receiver<Envelope>,
     state_tx: Broadcast<StateEvent>,
@@ -113,6 +120,7 @@ impl Executor {
             pending_channel_creates: HashSet::new(),
             pending_mix_creates: HashSet::new(),
             pending_channel_removals: HashSet::new(),
+            deferred_channel_destroys: Vec::new(),
             pending_mix_removals: HashSet::new(),
             control_rx,
             state_tx,
@@ -139,6 +147,7 @@ impl Executor {
         if !*shutdown.borrow() {
             loop {
                 let flush_deadline = self.storage.state_flush_deadline();
+                let retire_deadline = self.next_deferred_destroy_deadline();
                 tokio::select! {
                     Some(envelope) = self.control_rx.recv() => {
                         if let Some(event) = self.handle_query(envelope) {
@@ -153,6 +162,9 @@ impl Executor {
                     }
                     () = sleep_until_optional(flush_deadline), if flush_deadline.is_some() => {
                         self.storage.flush_state_if_dirty(&self.graph);
+                    }
+                    () = sleep_until_optional(retire_deadline), if retire_deadline.is_some() => {
+                        self.flush_due_deferred_destroys()?;
                     }
                     res = shutdown.changed() => {
                         if res.is_err() || *shutdown.borrow() {

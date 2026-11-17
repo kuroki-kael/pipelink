@@ -104,6 +104,28 @@ impl ConfigGraph {
         removed_channel || removed_from_mix
     }
 
+    /// Reorders `name` (case-insensitive) to `to_index`, returning `true` if the list
+    /// changed.
+    pub fn move_channel(&mut self, name: &ChannelName, to_index: usize) -> bool {
+        let Some(from_idx) = self
+            .channels
+            .iter()
+            .position(|ch| ch.name.eq_ignore_ascii_case(name))
+        else {
+            return false;
+        };
+        let Some(last_idx) = self.channels.len().checked_sub(1) else {
+            return false;
+        };
+        let actual_to = to_index.min(last_idx);
+        if from_idx == actual_to {
+            return false;
+        }
+        let ch = self.channels.remove(from_idx);
+        self.channels.insert(actual_to, ch);
+        true
+    }
+
     /// Ensures a mix entry exists in [`ConfigGraph::mixes`] (case-insensitive).
     pub fn ensure_mix(&mut self, name: &MixName) {
         if !self.mixes.iter().any(|m| m.name.eq_ignore_ascii_case(name)) {

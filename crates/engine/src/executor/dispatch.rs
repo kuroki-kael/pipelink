@@ -40,6 +40,15 @@ impl Executor {
             } => {
                 self.on_set_channel_mute(channel, mix, muted)?;
             },
+            ControlEvent::SetChannelMasterVolume { channel, percent } => {
+                self.on_set_channel_master_volume(&channel, percent);
+            },
+            ControlEvent::SetChannelMasterMute { channel, muted } => {
+                self.on_set_channel_master_mute(&channel, muted);
+            },
+            ControlEvent::MoveChannel { channel, to_index } => {
+                self.on_move_channel(&channel, to_index)?;
+            },
             ControlEvent::RouteApp { app, channel } => {
                 self.on_route_app(app, &channel);
             },
@@ -137,6 +146,13 @@ impl Executor {
                 let _ = self
                     .state_tx
                     .send(StateEvent::DefaultSinkOperationFailed { error: reason });
+            },
+            PipewireEvent::ChannelPropsChanged {
+                node_id,
+                linear_volume,
+                muted,
+            } => {
+                self.on_channel_props_changed(node_id, linear_volume, muted);
             },
             _ => {},
         }

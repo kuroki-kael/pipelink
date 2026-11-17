@@ -112,6 +112,7 @@ impl Executor {
             .map(|c| c.name.clone())
         {
             self.pending_channel_removals.remove(&ch_name);
+            self.sync_channel_app_routes(&ch_name);
             warn!("Channel '{ch_name}' could not be removed: {reason}");
             let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
                 channel: ch_name,
