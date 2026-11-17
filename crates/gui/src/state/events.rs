@@ -82,10 +82,8 @@ impl App {
                 self.snapshot.default_sink = Some(sink);
                 false
             },
-            StateEvent::ChannelCreationFailed { error, .. }
-            | StateEvent::MixCreationFailed { error, .. }
-            | StateEvent::ChannelRemovalFailed { error, .. }
-            | StateEvent::MixRemovalFailed { error, .. }
+            StateEvent::ChannelOperationFailed { error, .. }
+            | StateEvent::MixOperationFailed { error, .. }
             | StateEvent::RouteOperationFailed { error, .. }
             | StateEvent::AppRoutingFailed { error, .. }
             | StateEvent::OutputOperationFailed { error }

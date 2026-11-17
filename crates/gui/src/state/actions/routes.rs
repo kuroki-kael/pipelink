@@ -27,12 +27,12 @@ pub(in crate::state) fn create_channel(
             matches!(
                 ev,
                 StateEvent::ChannelAdded { channel }
-                | StateEvent::ChannelCreationFailed { channel, .. }
+                | StateEvent::ChannelOperationFailed { channel, .. }
                     if channel == &target
             )
         },
         |ev| match ev {
-            StateEvent::ChannelCreationFailed { error, .. } => Err(error),
+            StateEvent::ChannelOperationFailed { error, .. } => Err(error),
             _ => Ok(()),
         },
     )
@@ -50,12 +50,12 @@ pub(in crate::state) fn remove_channel(
             matches!(
                 ev,
                 StateEvent::ChannelRemoved { channel }
-                | StateEvent::ChannelRemovalFailed { channel, .. }
+                | StateEvent::ChannelOperationFailed { channel, .. }
                     if channel.eq_ignore_ascii_case(&target)
             )
         },
         |ev| match ev {
-            StateEvent::ChannelRemovalFailed { error, .. } => Err(error),
+            StateEvent::ChannelOperationFailed { error, .. } => Err(error),
             _ => Ok(()),
         },
     )
@@ -69,12 +69,12 @@ pub(in crate::state) fn create_mix(client: UnixSocketClient, name: MixName) -> T
         move |ev| {
             matches!(
                 ev,
-                StateEvent::MixAdded { mix } | StateEvent::MixCreationFailed { mix, .. }
+                StateEvent::MixAdded { mix } | StateEvent::MixOperationFailed { mix, .. }
                     if mix == &target
             )
         },
         |ev| match ev {
-            StateEvent::MixCreationFailed { error, .. } => Err(error),
+            StateEvent::MixOperationFailed { error, .. } => Err(error),
             _ => Ok(()),
         },
     )
@@ -88,12 +88,12 @@ pub(in crate::state) fn remove_mix(client: UnixSocketClient, name: MixName) -> T
         move |ev| {
             matches!(
                 ev,
-                StateEvent::MixRemoved { mix } | StateEvent::MixRemovalFailed { mix, .. }
+                StateEvent::MixRemoved { mix } | StateEvent::MixOperationFailed { mix, .. }
                     if mix.eq_ignore_ascii_case(&target)
             )
         },
         |ev| match ev {
-            StateEvent::MixRemovalFailed { error, .. } => Err(error),
+            StateEvent::MixOperationFailed { error, .. } => Err(error),
             _ => Ok(()),
         },
     )

@@ -113,7 +113,7 @@ impl Executor {
         {
             self.pending_channel_removals.remove(&ch_name);
             warn!("Channel '{ch_name}' could not be removed: {reason}");
-            let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
+            let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
                 channel: ch_name,
                 error: reason.to_string(),
             });
@@ -128,7 +128,7 @@ impl Executor {
         {
             self.pending_mix_removals.remove(&mix_name);
             warn!("Mix '{mix_name}' could not be removed: {reason}");
-            let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+            let _ = self.state_tx.send(StateEvent::MixOperationFailed {
                 mix: mix_name,
                 error: reason.to_string(),
             });
@@ -153,7 +153,7 @@ impl Executor {
 
         warn!("Channel '{name}' could not be created: {reason}");
 
-        let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
+        let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
             channel: name,
             error: reason.to_string(),
         });
@@ -164,7 +164,7 @@ impl Executor {
         self.pending_mix_removals.remove(&name);
         warn!("Mix '{name}' could not be removed: {reason}");
 
-        let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+        let _ = self.state_tx.send(StateEvent::MixOperationFailed {
             mix: name,
             error: reason.to_string(),
         });
@@ -186,7 +186,7 @@ impl Executor {
 
         warn!("Mix '{name}' could not be created: {reason}");
 
-        let _ = self.state_tx.send(StateEvent::MixCreationFailed {
+        let _ = self.state_tx.send(StateEvent::MixOperationFailed {
             mix: name,
             error: reason.to_string(),
         });

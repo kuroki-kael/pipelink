@@ -50,7 +50,7 @@ pub(super) async fn run(action: MixAction) {
             })
             .await
             {
-                Ok(StateEvent::MixCreationFailed { error, .. }) => {
+                Ok(StateEvent::MixOperationFailed { error, .. }) => {
                     fail(format!("failed to create mix '{name}': {error}"));
                 },
                 Ok(_) => println!("Mix '{name}' created successfully"),
@@ -67,7 +67,7 @@ pub(super) async fn run(action: MixAction) {
             })
             .await
             {
-                Ok(StateEvent::MixRemovalFailed { error, .. }) => {
+                Ok(StateEvent::MixOperationFailed { error, .. }) => {
                     fail(format!("failed to remove mix '{name}': {error}"));
                 },
                 Ok(StateEvent::MixRemoved { mix }) => println!("Mix '{mix}' removed"),
@@ -115,7 +115,8 @@ pub(super) async fn run(action: MixAction) {
 fn confirms_created(event: &StateEvent, target: &MixName) -> bool {
     matches!(
         event,
-        StateEvent::MixAdded { mix } | StateEvent::MixCreationFailed { mix, .. } if mix == target
+        StateEvent::MixAdded { mix } | StateEvent::MixOperationFailed { mix, .. }
+            if mix.eq_ignore_ascii_case(target)
     )
 }
 
@@ -123,7 +124,7 @@ fn confirms_created(event: &StateEvent, target: &MixName) -> bool {
 fn confirms_removed(event: &StateEvent, target: &MixName) -> bool {
     matches!(
         event,
-        StateEvent::MixRemoved { mix } | StateEvent::MixRemovalFailed { mix, .. }
+        StateEvent::MixRemoved { mix } | StateEvent::MixOperationFailed { mix, .. }
             if mix.eq_ignore_ascii_case(target)
     )
 }

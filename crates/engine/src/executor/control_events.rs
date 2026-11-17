@@ -22,11 +22,11 @@ impl Executor {
     /// Creates a channel together with its `JACK` input ports and `PipeWire` sink.
     ///
     /// The channel enters the graph optimistically, before `PipeWire` confirms
-    /// it, and is taken out again on `ChannelCreationFailed`.
+    /// it, and is taken out again on `ChannelOperationFailed`.
     pub(super) fn on_create_channel(&mut self, name: ChannelName) -> Result<(), ExecutorError> {
         if let Err(err) = self.graph.add_channel(name.clone()) {
             warn!("{err}");
-            let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
+            let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
                 channel: name,
                 error: err.to_string(),
             });
@@ -39,7 +39,7 @@ impl Executor {
                 return Err(ExecutorError::Jack(err.to_string()));
             }
             warn!("Failed to create JACK channel '{name}': {err}");
-            let _ = self.state_tx.send(StateEvent::ChannelCreationFailed {
+            let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
                 channel: name,
                 error: err.to_string(),
             });
@@ -76,7 +76,7 @@ impl Executor {
             .find(|c| c.name.eq_ignore_ascii_case(&name))
             .cloned()
         else {
-            let _ = self.state_tx.send(StateEvent::ChannelRemovalFailed {
+            let _ = self.state_tx.send(StateEvent::ChannelOperationFailed {
                 channel: name,
                 error: "there is no channel with this name".to_string(),
             });
@@ -111,7 +111,7 @@ impl Executor {
     pub(super) fn on_create_mix(&mut self, name: MixName) -> Result<(), ExecutorError> {
         if let Err(err) = self.graph.add_mix(name.clone()) {
             warn!("{err}");
-            let _ = self.state_tx.send(StateEvent::MixCreationFailed {
+            let _ = self.state_tx.send(StateEvent::MixOperationFailed {
                 mix: name,
                 error: err.to_string(),
             });
@@ -124,7 +124,7 @@ impl Executor {
                 return Err(ExecutorError::Jack(err.to_string()));
             }
             warn!("Failed to create JACK mix '{name}': {err}");
-            let _ = self.state_tx.send(StateEvent::MixCreationFailed {
+            let _ = self.state_tx.send(StateEvent::MixOperationFailed {
                 mix: name,
                 error: err.to_string(),
             });
@@ -162,7 +162,7 @@ impl Executor {
             .find(|m| m.name.eq_ignore_ascii_case(&name))
             .cloned()
         else {
-            let _ = self.state_tx.send(StateEvent::MixRemovalFailed {
+            let _ = self.state_tx.send(StateEvent::MixOperationFailed {
                 mix: name,
                 error: "there is no mix with this name".to_string(),
             });

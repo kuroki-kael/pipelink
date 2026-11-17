@@ -78,34 +78,6 @@ pub enum StateEvent {
         /// Mix name.
         mix: MixName,
     },
-    /// Channel couldn't be created.
-    ChannelCreationFailed {
-        /// Channel name.
-        channel: ChannelName,
-        /// Reason the `PipeWire` sink could not be created.
-        error: String,
-    },
-    /// Mix couldn't be created.
-    MixCreationFailed {
-        /// Mix name.
-        mix: MixName,
-        /// Reason the `PipeWire` loopback could not be created.
-        error: String,
-    },
-    /// Channel couldn't be removed.
-    ChannelRemovalFailed {
-        /// Channel name.
-        channel: ChannelName,
-        /// Reason the channel could not be removed.
-        error: String,
-    },
-    /// Mix couldn't be removed.
-    MixRemovalFailed {
-        /// Mix name.
-        mix: MixName,
-        /// Reason the mix could not be removed.
-        error: String,
-    },
     /// Channel-to-mix route, gain, or mute update failed.
     RouteOperationFailed {
         /// Affected channel name.
@@ -159,6 +131,20 @@ pub enum StateEvent {
     /// Updating `WirePlumber`'s default audio sink failed.
     DefaultSinkOperationFailed {
         /// Reason the default sink update failed.
+        error: String,
+    },
+    /// Invoking any change for a channel failed.
+    ChannelOperationFailed {
+        /// Affected channel name.
+        channel: ChannelName,
+        /// Reason the operation failed.
+        error: String,
+    },
+    /// Invoking any change for a mix failed.
+    MixOperationFailed {
+        /// Affected mix name.
+        mix: MixName,
+        /// Reason the operation failed.
         error: String,
     },
 }

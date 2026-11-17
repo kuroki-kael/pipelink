@@ -48,7 +48,7 @@ pub(super) async fn run(action: ChannelAction) {
             })
             .await
             {
-                Ok(StateEvent::ChannelCreationFailed { error, .. }) => {
+                Ok(StateEvent::ChannelOperationFailed { error, .. }) => {
                     fail(format!("failed to create channel '{name}': {error}"));
                 },
                 Ok(_) => println!("Channel '{name}' created successfully"),
@@ -65,7 +65,7 @@ pub(super) async fn run(action: ChannelAction) {
             })
             .await
             {
-                Ok(StateEvent::ChannelRemovalFailed { error, .. }) => {
+                Ok(StateEvent::ChannelOperationFailed { error, .. }) => {
                     fail(format!("failed to remove channel '{name}': {error}"));
                 },
                 Ok(StateEvent::ChannelRemoved { channel }) => {
@@ -82,8 +82,8 @@ pub(super) async fn run(action: ChannelAction) {
 fn confirms_created(event: &StateEvent, target: &ChannelName) -> bool {
     matches!(
         event,
-        StateEvent::ChannelAdded { channel } | StateEvent::ChannelCreationFailed { channel, .. }
-        if channel == target
+        StateEvent::ChannelAdded { channel } | StateEvent::ChannelOperationFailed { channel, .. }
+            if channel.eq_ignore_ascii_case(target)
     )
 }
 
@@ -91,7 +91,7 @@ fn confirms_created(event: &StateEvent, target: &ChannelName) -> bool {
 fn confirms_removed(event: &StateEvent, target: &ChannelName) -> bool {
     matches!(
         event,
-        StateEvent::ChannelRemoved { channel } | StateEvent::ChannelRemovalFailed { channel, .. }
+        StateEvent::ChannelRemoved { channel } | StateEvent::ChannelOperationFailed { channel, .. }
             if channel.eq_ignore_ascii_case(target)
     )
 }

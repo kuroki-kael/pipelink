@@ -99,24 +99,24 @@ fn test_control_reply_app_channels_json_format() {
 
 #[test]
 fn test_state_event_removal_failed_json_format() {
-    let event = StateEvent::ChannelRemovalFailed {
+    let event = StateEvent::ChannelOperationFailed {
         channel: ChannelName::from("mic"),
         error: "there is no channel with this name".to_string(),
     };
 
     assert_eq!(
         serde_json::to_string(&event).unwrap(),
-        r#"{"type":"channel_removal_failed","channel":"mic","error":"there is no channel with this name"}"#
+        r#"{"type":"channel_operation_failed","channel":"mic","error":"there is no channel with this name"}"#
     );
 
-    let event = StateEvent::MixRemovalFailed {
+    let event = StateEvent::MixOperationFailed {
         mix: MixName::from("music"),
         error: "there is no mix with this name".to_string(),
     };
 
     assert_eq!(
         serde_json::to_string(&event).unwrap(),
-        r#"{"type":"mix_removal_failed","mix":"music","error":"there is no mix with this name"}"#
+        r#"{"type":"mix_operation_failed","mix":"music","error":"there is no mix with this name"}"#
     );
 
     let event = StateEvent::RouteOperationFailed {
