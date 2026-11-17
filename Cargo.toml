@@ -67,6 +67,7 @@ serde_json = { version = "1.0.154" }
 
 # GUI
 iced = { version = "0.14", features = ["tokio", "svg"] }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
 [profile.dev]
 opt-level = 0

@@ -2645,10 +2645,9 @@ dependencies = [
  "pipelink-engine",
  "pipelink-gui",
  "pipelink-ipc",
- "serde",
- "serde_json",
  "tokio",
  "tracing",
+ "zbus",
 ]
 
 [[package]]

@@ -38,6 +38,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (listener, socket_guard) = start_server().await?;
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    #[cfg(feature = "gui")]
+    {
+        let tray_shutdown_tx = shutdown_tx.clone();
+        let tray_shutdown_rx = shutdown_rx.clone();
+        tokio::spawn(crate::tray::run(tray_shutdown_tx, tray_shutdown_rx));
+    }
+
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;
     tokio::spawn(async move {

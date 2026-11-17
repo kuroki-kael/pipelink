@@ -19,8 +19,7 @@ pipelink-ipc = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+zbus = { workspace = true, optional = true }
 
 [lints]
 workspace = true
@@ -28,7 +27,7 @@ workspace = true
 [features]
 default = []
 api = []
-gui = ["dep:pipelink-gui"]
+gui = ["dep:pipelink-gui", "dep:zbus"]
 full = []
 web = []
 midi = []

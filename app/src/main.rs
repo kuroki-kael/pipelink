@@ -5,6 +5,8 @@
 
 mod cli;
 mod daemon;
+#[cfg(feature = "gui")]
+mod tray;
 
 fn main() {
     cli::run();
