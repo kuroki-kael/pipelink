@@ -20,6 +20,8 @@ pub(crate) enum MixAction {
     List,
     /// Create a new mix
     Add { name: String },
+    /// Rename an existing mix
+    Rename { old_name: String, new_name: String },
     /// Remove a mix
     Remove { name: String },
     /// Show or select the active mix
@@ -57,6 +59,7 @@ pub(super) async fn run(action: MixAction) {
                 Err(e) => fail(e),
             }
         },
+        MixAction::Rename { old_name, new_name } => rename_mix(&old_name, &new_name).await,
         MixAction::Remove { name } => {
             let target = MixName::from(name.clone());
             let request = ControlEvent::RemoveMix {
@@ -136,4 +139,38 @@ fn confirms_activated(event: &StateEvent, target: &MixName) -> bool {
         StateEvent::GlobalLayerSwitched { mix } | StateEvent::LayerSelectionFailed { mix, .. }
             if mix.eq_ignore_ascii_case(target)
     )
+}
+
+/// Whether the state event confirms or rejects a mix rename.
+fn confirms_renamed(event: &StateEvent, target: &MixName) -> bool {
+    matches!(
+        event,
+        StateEvent::MixRenamed { old_name, .. } if old_name.eq_ignore_ascii_case(target)
+    ) || matches!(
+        event,
+        StateEvent::MixOperationFailed { mix, .. } if mix.eq_ignore_ascii_case(target)
+    )
+}
+
+async fn rename_mix(old_name: &str, new_name: &str) {
+    let old_target = MixName::from(old_name.to_string());
+    let new_target = MixName::from(new_name.to_string());
+    let request = ControlEvent::RenameMix {
+        old_name: old_target.clone(),
+        new_name: new_target.clone(),
+    };
+    match pipelink_ipc::client::send_mutation(request, |event| confirms_renamed(event, &old_target))
+        .await
+    {
+        Ok(StateEvent::MixOperationFailed { error, .. }) => {
+            fail(format!(
+                "failed to rename mix '{old_name}' to '{new_name}': {error}"
+            ));
+        },
+        Ok(StateEvent::MixRenamed { old_name, new_name }) => {
+            println!("Mix '{old_name}' renamed to '{new_name}'");
+        },
+        Ok(_) => println!("Mix '{old_name}' renamed to '{new_name}'"),
+        Err(e) => fail(e),
+    }
 }

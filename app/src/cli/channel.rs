@@ -20,6 +20,8 @@ pub(crate) enum ChannelAction {
     List,
     /// Create a new channel
     Add { name: String },
+    /// Rename an existing channel
+    Rename { old_name: String, new_name: String },
     /// Remove a channel
     Remove { name: String },
 }
@@ -55,6 +57,7 @@ pub(super) async fn run(action: ChannelAction) {
                 Err(e) => fail(e),
             }
         },
+        ChannelAction::Rename { old_name, new_name } => rename_channel(&old_name, &new_name).await,
         ChannelAction::Remove { name } => {
             let target = ChannelName::from(name.clone());
             let request = ControlEvent::RemoveChannel {
@@ -94,4 +97,40 @@ fn confirms_removed(event: &StateEvent, target: &ChannelName) -> bool {
         StateEvent::ChannelRemoved { channel } | StateEvent::ChannelOperationFailed { channel, .. }
             if channel.eq_ignore_ascii_case(target)
     )
+}
+
+/// Whether the state event confirms or rejects a channel rename.
+fn confirms_renamed(event: &StateEvent, target: &ChannelName) -> bool {
+    matches!(
+        event,
+        StateEvent::ChannelRenamed { old_name, .. }
+            if old_name.eq_ignore_ascii_case(target)
+    ) || matches!(
+        event,
+        StateEvent::ChannelOperationFailed { channel, .. }
+            if channel.eq_ignore_ascii_case(target)
+    )
+}
+
+async fn rename_channel(old_name: &str, new_name: &str) {
+    let old_target = ChannelName::from(old_name);
+    let new_target = ChannelName::from(new_name);
+    let request = ControlEvent::RenameChannel {
+        old_name: old_target.clone(),
+        new_name: new_target,
+    };
+    match pipelink_ipc::client::send_mutation(request, |event| confirms_renamed(event, &old_target))
+        .await
+    {
+        Ok(StateEvent::ChannelOperationFailed { error, .. }) => {
+            fail(format!(
+                "failed to rename channel '{old_name}' to '{new_name}': {error}"
+            ));
+        },
+        Ok(StateEvent::ChannelRenamed { old_name, new_name }) => {
+            println!("Channel '{old_name}' renamed to '{new_name}'");
+        },
+        Ok(_) => println!("Channel '{old_name}' renamed to '{new_name}'"),
+        Err(e) => fail(e),
+    }
 }
