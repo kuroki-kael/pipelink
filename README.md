@@ -84,10 +84,8 @@ sudo make install PREFIX=/usr
 
 This installs `/usr/bin/pipelink`, the systemd user unit `/usr/lib/systemd/user/pipelink.service`, [config.example.json](packaging/config.example.json), and `LICENSE`.
 
-You can also install the binary directly via Cargo (`crates.io` or git):
+You can also install the binary directly from Codeberg git via Cargo:
 ```bash
-cargo install pipelink
-# or directly from Codeberg git:
 cargo install --git https://codeberg.org/kuroki-kael/pipelink pipelink
 ```
 

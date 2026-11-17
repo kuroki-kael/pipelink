@@ -33,7 +33,4 @@ All Git commit messages must strictly follow Conventional Commits (v1.0.0):
 
 - **Versioning:** Keep a single workspace version in root `Cargo.toml` (`[workspace.package].version` and internal `[workspace.dependencies]` entries); all workspace crates use `version.workspace = true`.
 - **Main-only releases:** PR checks (`.forgejo/workflows/pr.yaml`) run on pull requests to `main`. Release tags (`v*`) must point to commits on `main` (enforced by `.forgejo/scripts/verify-tag-on-main.sh`).
-- **Cargo & Registry publishing:**
-  - Crates must be published in topological order (`pipelink-common` -> `pipelink-ipc` -> `pipelink-gui` -> `pipelink-resolver` -> `pipelink-jack` -> `pipelink-pw` -> `pipelink-engine` -> `pipelink`) via `.forgejo/scripts/publish-cargo.sh`.
-  - Codeberg Cargo registry requires the `Bearer ` prefix on `CARGO_REGISTRIES_CODEBERG_TOKEN`.
-  - Do not hardcode sensitive credentials; CI relies on `PACKAGE_TOKEN`, `CARGO_REGISTRY_TOKEN`, and optional `GH_RELEASE_TOKEN`.
+- **Release credentials:** Do not hardcode sensitive credentials; CI relies on `PACKAGE_TOKEN` and optional `GH_RELEASE_TOKEN`.
