@@ -2,7 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-17
+
 ### Features
 
 - **events:** Add graph snapshot, subscription, and installed app queries ([`23d9492`](https://codeberg.org/kuroki-kael/pipelink/commit/23d9492525e7ac5e30e8f7a43a11ff9379f576ce))
@@ -23,19 +24,31 @@ All notable changes to this project will be documented in this file.
 - **tray:** Add daemon StatusNotifierItem icon with detached GUI launch ([`f3504b7`](https://codeberg.org/kuroki-kael/pipelink/commit/f3504b79cab6dac3154dd591b3c284b06203494a))
 - **gui:** Replace mute text buttons with speaker icons ([`e795f56`](https://codeberg.org/kuroki-kael/pipelink/commit/e795f563e95929ac970b3d2794b089f622bf9470))
 
+### Bug Fixes
+
+- **release:** Include pipelink-ipc and pipelink-gui in cargo publish ([`b9d7765`](https://codeberg.org/kuroki-kael/pipelink/commit/b9d7765953177e418af36636180f368d11184949))
+
 ### Refactoring
 
 - **events:** Unify channel and mix failure state events ([`7ceb6b7`](https://codeberg.org/kuroki-kael/pipelink/commit/7ceb6b7345045737615ac562cdc9a20c79b919dc))
 
+### Documentation
+
+- Add CHANGELOG.md following cliff.toml format ([`7dc1777`](https://codeberg.org/kuroki-kael/pipelink/commit/7dc177776e387a6a7af80dcae53e8125f16baefa))
+
 ### Styling
 
 - **gui:** Align matrix cell heights dynamically to channel rows ([`3c08bbf`](https://codeberg.org/kuroki-kael/pipelink/commit/3c08bbf44fc05c85dad4540362813e3ad26fda5f))
+- **release:** Refine blank-line spacing in cliff.toml ([`5e35358`](https://codeberg.org/kuroki-kael/pipelink/commit/5e35358fab7b27c93b6b90f9e5ced5287bd51aba))
 
 ### Build, CI & Maintenance
 
 - **release:** Switch release changelog generation to git-cliff ([`92ae4e7`](https://codeberg.org/kuroki-kael/pipelink/commit/92ae4e73c7523a3b36f008c36555631db30edb4a))
 
+
+**Full Changelog:** https://codeberg.org/kuroki-kael/pipelink/compare/v0.1.1...v0.2.0
 ## [0.1.1] - 2026-11-16
+
 ### Features
 
 - **common:** Add categorized logger with journald support ([`ce57fe8`](https://codeberg.org/kuroki-kael/pipelink/commit/ce57fe85ee3e66bd0116f2b79a6b22be53a378aa))
@@ -56,6 +69,7 @@ All notable changes to this project will be documented in this file.
 
 **Full Changelog:** https://codeberg.org/kuroki-kael/pipelink/compare/v0.1.0...v0.1.1
 ## [0.1.0] - 2026-11-16
+
 ### Features
 
 - **common:** Add shared models, events, and graph types ([`dcdde9c`](https://codeberg.org/kuroki-kael/pipelink/commit/dcdde9c70e7f923288790afc50c93b697302f10f))

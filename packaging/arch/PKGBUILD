@@ -1,7 +1,7 @@
 # Maintainer: Kuroki-Kael <kuroki@kuroki-kael.com>
 pkgbase=pipelink
 pkgname=('pipelink' 'pipelink-gui')
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Virtual PipeWire/JACK audio routing daemon and CLI'
 arch=('x86_64' 'aarch64')
