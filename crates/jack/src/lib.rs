@@ -26,12 +26,22 @@ pub(crate) enum Command {
         idx: usize,
         gains: Vec<f32>,
     },
+    MoveChannel {
+        from_idx: usize,
+        to_idx: usize,
+        gains: Vec<f32>,
+    },
     CreateMix {
         ports: MixPorts,
         gains: Vec<f32>,
     },
     RemoveMix {
         idx: usize,
+        gains: Vec<f32>,
+    },
+    MoveMix {
+        from_idx: usize,
+        to_idx: usize,
         gains: Vec<f32>,
     },
     SetGains(Vec<f32>),

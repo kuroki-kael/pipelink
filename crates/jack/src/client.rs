@@ -141,6 +141,33 @@ impl JackClient {
         Ok(())
     }
 
+    /// Reorders channel `name` to `to_idx` inside the audio thread and installs `gains`.
+    ///
+    /// # Errors
+    /// Returns [`JackError::ChannelNotFound`] if `name` is not registered,
+    /// [`JackError::ChannelClosed`] if the audio thread stopped, or
+    /// [`JackError::ChannelFull`] if the command ringbuffer is full.
+    pub fn move_channel(
+        &mut self,
+        name: &ChannelName,
+        to_idx: usize,
+        gains: Vec<f32>,
+    ) -> Result<(), JackError> {
+        self.reclaim();
+
+        let (from_idx, actual_to) = resolve_move_indices(&self.channel_names, name, to_idx)
+            .ok_or_else(|| JackError::ChannelNotFound(name.clone()))?;
+
+        self.send_command(Command::MoveChannel {
+            from_idx,
+            to_idx: actual_to,
+            gains,
+        })?;
+        let ch = self.channel_names.remove(from_idx);
+        self.channel_names.insert(actual_to, ch);
+        Ok(())
+    }
+
     /// Registers stereo output ports for a new mix and installs the updated gains matrix.
     ///
     /// # Errors
@@ -185,6 +212,33 @@ impl JackClient {
         self.send_command(Command::RemoveMix { idx, gains })?;
         self.mix_names.remove(idx);
         self.pending_reclaims += 1;
+        Ok(())
+    }
+
+    /// Reorders mix `name` to `to_idx` inside the audio thread and installs `gains`.
+    ///
+    /// # Errors
+    /// Returns [`JackError::MixNotFound`] if `name` is not registered,
+    /// [`JackError::ChannelClosed`] if the audio thread stopped, or
+    /// [`JackError::ChannelFull`] if the command ringbuffer is full.
+    pub fn move_mix(
+        &mut self,
+        name: &MixName,
+        to_idx: usize,
+        gains: Vec<f32>,
+    ) -> Result<(), JackError> {
+        self.reclaim();
+
+        let (from_idx, actual_to) = resolve_move_indices(&self.mix_names, name, to_idx)
+            .ok_or_else(|| JackError::MixNotFound(name.clone()))?;
+
+        self.send_command(Command::MoveMix {
+            from_idx,
+            to_idx: actual_to,
+            gains,
+        })?;
+        let mix = self.mix_names.remove(from_idx);
+        self.mix_names.insert(actual_to, mix);
         Ok(())
     }
 
@@ -258,6 +312,16 @@ impl JackClient {
         let _ = client.unregister_port(ports.out_l);
         let _ = client.unregister_port(ports.out_r);
     }
+}
+
+fn resolve_move_indices<T: PartialEq>(
+    items: &[T],
+    target: &T,
+    to_idx: usize,
+) -> Option<(usize, usize)> {
+    let from_idx = items.iter().position(|item| item == target)?;
+    let last_idx = items.len().checked_sub(1)?;
+    Some((from_idx, to_idx.min(last_idx)))
 }
 
 struct Notification;

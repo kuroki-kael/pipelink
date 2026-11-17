@@ -57,6 +57,17 @@ impl JackProcess {
                 }
                 self.replace_gains(gains);
             },
+            Command::MoveChannel {
+                from_idx,
+                to_idx,
+                gains,
+            } => {
+                if from_idx < self.channels.len() && to_idx < self.channels.len() {
+                    let ports = self.channels.remove(from_idx);
+                    self.channels.insert(to_idx, ports);
+                }
+                self.replace_gains(gains);
+            },
             Command::CreateMix { ports, gains } => {
                 self.mixes.push(ports);
                 self.replace_gains(gains);
@@ -65,6 +76,17 @@ impl JackProcess {
                 if idx < self.mixes.len() {
                     let old_ports = self.mixes.remove(idx);
                     let _ = self.retired_tx.push(RetiredResource::Mix(old_ports));
+                }
+                self.replace_gains(gains);
+            },
+            Command::MoveMix {
+                from_idx,
+                to_idx,
+                gains,
+            } => {
+                if from_idx < self.mixes.len() && to_idx < self.mixes.len() {
+                    let ports = self.mixes.remove(from_idx);
+                    self.mixes.insert(to_idx, ports);
                 }
                 self.replace_gains(gains);
             },
