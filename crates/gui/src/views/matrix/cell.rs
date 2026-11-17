@@ -12,6 +12,7 @@ use iced::{
 use pipelink_common::types::{ChannelName, MixName};
 
 use crate::{
+    icons,
     state::{App, Message},
     theme,
 };
@@ -51,16 +52,19 @@ impl App {
         }
 
         let (gain_percent, muted) = route.map_or((100.0, false), |r| (r.gain_percent, r.muted));
-        let mute_label = if muted { "Muted" } else { "Mute" };
+        let mute_tip = if muted { "Unmute route" } else { "Mute route" };
 
-        let mute_btn = button(text(mute_label).size(11))
-            .on_press(Message::ToggleMute {
-                channel: channel.clone(),
-                mix: mix.clone(),
-                muted: !muted,
-            })
-            .padding([4, 8])
-            .style(theme::mute_button(muted));
+        let mute_btn = icons::hint(
+            button(icons::mute_speaker(muted, 14.0))
+                .on_press(Message::ToggleMute {
+                    channel: channel.clone(),
+                    mix: mix.clone(),
+                    muted: !muted,
+                })
+                .padding([5, 7])
+                .style(theme::mute_button(muted)),
+            mute_tip,
+        );
 
         let ch_change = channel.clone();
         let mix_change = mix.clone();

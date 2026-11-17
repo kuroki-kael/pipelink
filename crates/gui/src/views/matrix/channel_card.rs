@@ -94,15 +94,38 @@ impl App {
                 .style(theme::subtle_button),
         );
 
+        let master_row = self.view_channel_master_row(channel);
+
+        let channel_badge = container(column![header_row, master_row].spacing(8))
+            .width(CHANNEL_COL_WIDTH)
+            .padding([10, 12])
+            .style(theme::card_style);
+
+        let mut line = row![channel_badge].spacing(10).align_y(Alignment::Center);
+        for mix in &self.snapshot.mixes {
+            line = line.push(self.view_matrix_cell(channel, mix, MIX_COL_WIDTH));
+        }
+
+        line.into()
+    }
+
+    fn view_channel_master_row<'a>(&'a self, channel: &'a ChannelName) -> Element<'a, Message> {
         let (master_vol, master_muted) = self.channel_volume(channel);
-        let mute_label = if master_muted { "Muted" } else { "Mute" };
-        let mute_btn = button(text(mute_label).size(11))
-            .on_press(Message::ToggleChannelMute {
-                channel: channel.clone(),
-                muted: !master_muted,
-            })
-            .padding([3, 7])
-            .style(theme::mute_button(master_muted));
+        let mute_tip = if master_muted {
+            "Unmute channel"
+        } else {
+            "Mute channel"
+        };
+        let mute_btn = icons::hint(
+            button(icons::mute_speaker(master_muted, 14.0))
+                .on_press(Message::ToggleChannelMute {
+                    channel: channel.clone(),
+                    muted: !master_muted,
+                })
+                .padding([5, 7])
+                .style(theme::mute_button(master_muted)),
+            mute_tip,
+        );
 
         let ch_slider = channel.clone();
         let master_slider = slider(0.0_f32..=200.0_f32, master_vol, move |percent| {
@@ -122,21 +145,10 @@ impl App {
             .size(11)
             .color(theme::TEXT_MUTED);
 
-        let master_row = row![mute_btn, master_slider, vol_label]
+        row![mute_btn, master_slider, vol_label]
             .spacing(8)
-            .align_y(Alignment::Center);
-
-        let channel_badge = container(column![header_row, master_row].spacing(8))
-            .width(CHANNEL_COL_WIDTH)
-            .padding([10, 12])
-            .style(theme::card_style);
-
-        let mut line = row![channel_badge].spacing(10).align_y(Alignment::Center);
-        for mix in &self.snapshot.mixes {
-            line = line.push(self.view_matrix_cell(channel, mix, MIX_COL_WIDTH));
-        }
-
-        line.into()
+            .align_y(Alignment::Center)
+            .into()
     }
 
     pub(super) fn view_create_channel_row(&self) -> Element<'_, Message> {

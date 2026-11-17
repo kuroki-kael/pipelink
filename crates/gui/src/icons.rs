@@ -32,6 +32,8 @@ const TRASH: &[u8] = include_bytes!("../../../assets/icons/ui/trash.svg");
 const SEARCH: &[u8] = include_bytes!("../../../assets/icons/ui/search.svg");
 const CLOSE: &[u8] = include_bytes!("../../../assets/icons/ui/close.svg");
 const PLUS: &[u8] = include_bytes!("../../../assets/icons/ui/plus.svg");
+const SPEAKER_ON: &[u8] = include_bytes!("../../../assets/icons/ui/speaker-on.svg");
+const SPEAKER_MUTED: &[u8] = include_bytes!("../../../assets/icons/ui/speaker-muted.svg");
 
 /// Decodes the embedded 64×64 RGBA application icon for the OS window manager.
 #[must_use]
@@ -109,6 +111,18 @@ pub(crate) fn close(size: f32, color: Color) -> Svg<'static, Theme> {
 #[must_use]
 pub(crate) fn plus(size: f32, color: Color) -> Svg<'static, Theme> {
     tinted_svg(PLUS, size, color)
+}
+
+/// Renders the state-dependent speaker/mute vector icon.
+#[must_use]
+pub(crate) fn mute_speaker(muted: bool, size: f32) -> Svg<'static, Theme> {
+    let bytes = if muted { SPEAKER_MUTED } else { SPEAKER_ON };
+    let color = if muted {
+        theme::ACCENT_RED
+    } else {
+        theme::TEXT_MUTED
+    };
+    tinted_svg(bytes, size, color)
 }
 
 /// Renders an application icon from a pre-resolved SVG/PNG handle or a clean
