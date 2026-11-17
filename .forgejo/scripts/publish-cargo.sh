@@ -5,6 +5,8 @@ OWNER="${1:?owner required}"
 USER_AGENT="pipelink-ci (https://codeberg.org/${OWNER}/pipelink)"
 CRATES=(
   pipelink-common
+  pipelink-ipc
+  pipelink-gui
   pipelink-resolver
   pipelink-jack
   pipelink-pw
