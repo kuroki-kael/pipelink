@@ -154,14 +154,14 @@ fn test_channel_modal_app_projection_and_picker_filtering() {
     assert_eq!(routed[1].display_name, "Spotify");
     assert_eq!(routed[1].active_streams, Some(1));
 
-    let groups = app.picker_apps(&music, "");
+    let groups = app.picker_apps(Some(&music), "");
     assert_eq!(groups.active.len(), 1);
     assert_eq!(groups.active[0].display_name, "Discord");
     assert_eq!(groups.active[0].current_channel, Some(games));
     assert_eq!(groups.installed.len(), 1);
     assert_eq!(groups.installed[0].display_name, "Firefox");
 
-    let filtered = app.picker_apps(&music, "fire");
+    let filtered = app.picker_apps(Some(&music), "fire");
     assert_eq!(filtered.active, []);
     assert_eq!(filtered.installed.len(), 1);
     assert_eq!(filtered.installed[0].display_name, "Firefox");
@@ -198,4 +198,76 @@ fn test_resolve_app_icons_supports_absolute_svg_and_png_paths() {
     let resolved = icons::xdg::resolve_app_icons(&apps);
     assert!(resolved.contains_key("svg.app"));
     assert!(resolved.contains_key("png.app"));
+}
+
+#[test]
+fn test_channel_master_rename_reorder_and_create_for_app_state() {
+    let (mut app, _) = App::boot();
+    let music = ChannelName::from("Music");
+    let games = ChannelName::from("Games");
+
+    let _ = app.update(Message::StateEventReceived(StateEvent::ChannelAdded {
+        channel: music.clone(),
+    }));
+    let _ = app.update(Message::StateEventReceived(StateEvent::ChannelAdded {
+        channel: games.clone(),
+    }));
+    let _ = app.update(Message::StateEventReceived(
+        StateEvent::ChannelMasterChanged {
+            channel: music.clone(),
+            percent: 72.0,
+            muted: true,
+        },
+    ));
+    assert_eq!(app.channel_volume(&music), (72.0, true));
+
+    let _ = app.update(Message::StateEventReceived(
+        StateEvent::DefaultSinkChanged {
+            sink: NodeName::from("pipelink.channel.Music"),
+        },
+    ));
+    let _ = app.update(Message::OpenChannelDetails(music.clone()));
+    let _ = app.update(Message::StateEventReceived(StateEvent::ChannelRenamed {
+        old_name: music,
+        new_name: ChannelName::from("Tunes"),
+    }));
+    assert!(app.is_default_channel(&ChannelName::from("Tunes")));
+    assert_eq!(
+        app.modal.as_ref().map(|m| m.channel.as_ref()),
+        Some("Tunes")
+    );
+
+    let _ = app.update(Message::StateEventReceived(StateEvent::ChannelsReordered {
+        channels: vec![games, ChannelName::from("Tunes")],
+    }));
+    assert_eq!(app.snapshot.channels[0], "Games");
+
+    let _ = app.update(Message::CreateChannelForApp {
+        channel: ChannelName::from("Discord"),
+        app: AppDisplay::from("Discord"),
+    });
+    assert!(app.pending_route_after_create.is_some());
+
+    let personal = MixName::from("Personal");
+    let main = MixName::from("Main");
+    let _ = app.update(Message::StateEventReceived(StateEvent::MixAdded {
+        mix: personal.clone(),
+    }));
+    let _ = app.update(Message::StateEventReceived(
+        StateEvent::GlobalLayerSwitched {
+            mix: personal.clone(),
+        },
+    ));
+    let _ = app.update(Message::StartRenameMix(personal.clone()));
+    assert_eq!(
+        app.renaming_mix.as_ref().map(|(m, _)| m.as_ref()),
+        Some("Personal")
+    );
+    let _ = app.update(Message::StateEventReceived(StateEvent::MixRenamed {
+        old_name: personal,
+        new_name: main.clone(),
+    }));
+    assert_eq!(app.snapshot.mixes, vec![main.clone()]);
+    assert_eq!(app.snapshot.active_mix, Some(main));
+    assert!(app.renaming_mix.is_none());
 }

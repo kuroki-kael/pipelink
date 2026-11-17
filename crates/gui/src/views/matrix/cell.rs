@@ -11,7 +11,6 @@ use iced::{
 };
 use pipelink_common::types::{ChannelName, MixName};
 
-use super::MIX_COL_WIDTH;
 use crate::{
     state::{App, Message},
     theme,
@@ -22,6 +21,7 @@ impl App {
         &'a self,
         channel: &'a ChannelName,
         mix: &'a MixName,
+        col_width: f32,
     ) -> Element<'a, Message> {
         let route = self.find_route(channel, mix);
         let is_active = route.is_some_and(|r| r.active);
@@ -44,7 +44,7 @@ impl App {
                 .padding([12, 10])
                 .style(theme::nav_button(false)),
             )
-            .width(MIX_COL_WIDTH)
+            .width(col_width)
             .padding(4)
             .style(theme::inactive_cell_style)
             .into();
@@ -97,7 +97,7 @@ impl App {
                 .spacing(8)
                 .align_y(Alignment::Center),
         )
-        .width(MIX_COL_WIDTH)
+        .width(col_width)
         .padding([10, 12])
         .style(theme::cell_style)
         .into()

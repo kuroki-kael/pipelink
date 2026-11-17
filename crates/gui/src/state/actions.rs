@@ -6,6 +6,7 @@
 //! Asynchronous IPC actions dispatched from GUI updates.
 
 mod apps;
+mod channels;
 mod routes;
 
 use std::{
@@ -14,6 +15,9 @@ use std::{
 };
 
 pub(super) use apps::{route_app, unroute_app};
+pub(super) use channels::{
+    move_channel, rename_channel, set_channel_master_mute, set_channel_master_volume,
+};
 use iced::{Task, widget::svg};
 use pipelink_common::{
     events::{ControlEvent, ControlReply, InstalledAppInfo, StateEvent},
@@ -21,12 +25,14 @@ use pipelink_common::{
 };
 use pipelink_ipc::{ControlClient, UnixSocketClient};
 pub(super) use routes::{
-    create_channel, create_mix, remove_channel, remove_mix, select_active_mix, select_output,
-    set_default_sink, set_gain, set_mute, toggle_route,
+    create_channel, create_mix, remove_channel, remove_mix, rename_mix, select_active_mix,
+    select_output, set_default_sink, set_gain, set_mute, toggle_route,
 };
 
-use super::{App, Message};
+use super::{App, CreateChannelMode, Message};
 use crate::icons;
+
+const GAIN_THROTTLE_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Combined result of fetching installed `.desktop` apps and resolving their XDG icons
 /// off the GUI thread.
@@ -35,8 +41,6 @@ pub(crate) struct InstalledAppsPayload {
     pub(crate) apps: Vec<InstalledAppInfo>,
     pub(crate) icons: HashMap<String, svg::Handle>,
 }
-
-const GAIN_THROTTLE_INTERVAL: Duration = Duration::from_millis(50);
 
 impl App {
     pub(super) fn handle_gain_changed(
@@ -83,13 +87,43 @@ impl App {
         set_gain(self.client.clone(), channel, mix, percent)
     }
 
+    pub(super) fn handle_channel_volume_changed(
+        &mut self,
+        channel: ChannelName,
+        percent: f32,
+    ) -> Task<Message> {
+        let rounded = percent.round().clamp(0.0, 200.0);
+        self.set_local_channel_volume(&channel, rounded);
+
+        let now = Instant::now();
+        let should_send = self
+            .master_throttle
+            .get(&channel)
+            .is_none_or(|last| now.duration_since(*last) >= GAIN_THROTTLE_INTERVAL);
+
+        if should_send {
+            self.master_throttle.insert(channel.clone(), now);
+            return set_channel_master_volume(self.client.clone(), channel, rounded);
+        }
+
+        Task::none()
+    }
+
+    pub(super) fn handle_channel_volume_released(&mut self, channel: ChannelName) -> Task<Message> {
+        let (percent, _) = self.channel_volume(&channel);
+        self.master_throttle.insert(channel.clone(), Instant::now());
+        set_channel_master_volume(self.client.clone(), channel, percent)
+    }
+
     pub(super) fn submit_create_channel(&mut self) -> Task<Message> {
-        let trimmed = self.new_channel_name.trim().to_string();
+        let Some(CreateChannelMode::EmptyInput(name)) = &self.create_channel else {
+            return Task::none();
+        };
+        let trimmed = name.trim().to_string();
         if trimmed.is_empty() {
             return Task::none();
         }
-        self.creating_channel = false;
-        self.new_channel_name.clear();
+        self.create_channel = None;
         create_channel(self.client.clone(), ChannelName::from(trimmed))
     }
 
@@ -101,6 +135,35 @@ impl App {
         self.creating_mix = false;
         self.new_mix_name.clear();
         create_mix(self.client.clone(), MixName::from(trimmed))
+    }
+
+    pub(super) fn submit_rename_channel(&mut self) -> Task<Message> {
+        let Some(modal) = &self.modal else {
+            return Task::none();
+        };
+        let trimmed = modal.rename_draft.trim().to_string();
+        if trimmed.is_empty() || trimmed == modal.channel.as_ref() {
+            return Task::none();
+        }
+        rename_channel(
+            self.client.clone(),
+            modal.channel.clone(),
+            ChannelName::from(trimmed),
+        )
+    }
+
+    pub(super) fn submit_rename_mix(&mut self) -> Task<Message> {
+        let Some((old_mix, draft)) = self.renaming_mix.as_ref() else {
+            return Task::none();
+        };
+        let trimmed = draft.trim().to_string();
+        if trimmed.is_empty() || trimmed == old_mix.as_ref() {
+            self.renaming_mix = None;
+            return Task::none();
+        }
+        let old_name = old_mix.clone();
+        self.renaming_mix = None;
+        rename_mix(self.client.clone(), old_name, MixName::from(trimmed))
     }
 }
 

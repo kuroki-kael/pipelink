@@ -9,7 +9,7 @@ mod picker;
 
 use iced::{
     Alignment, Element, Length,
-    widget::{button, column, container, opaque, row, scrollable, space, stack, text},
+    widget::{button, column, container, opaque, row, scrollable, space, stack, text, text_input},
 };
 use pipelink_common::types::ChannelName;
 
@@ -29,10 +29,32 @@ impl App {
         let routed = self.routed_apps_for_channel(channel);
         let active_count = routed.iter().filter(|a| a.active_streams.is_some()).count();
 
+        let can_rename = {
+            let trimmed = modal.rename_draft.trim();
+            !trimmed.is_empty() && trimmed != channel.as_ref()
+        };
+
+        let mut rename_row = row![
+            text_input("Channel name", &modal.rename_draft)
+                .on_input(Message::ChannelRenameDraftChanged)
+                .on_submit(Message::SubmitRenameChannel)
+                .padding([6, 10])
+                .width(Length::Fixed(220.0)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        if can_rename {
+            rename_row = rename_row.push(
+                button(text("Rename").size(12))
+                    .on_press(Message::SubmitRenameChannel)
+                    .padding([6, 12])
+                    .style(theme::subtle_button),
+            );
+        }
+
         let header = row![
-            text(channel.to_string())
-                .size(18)
-                .color(theme::TEXT_PRIMARY),
+            rename_row,
             if self.is_default_channel(channel) {
                 container(text("Default sink").size(11).color(theme::ACCENT_GREEN))
                     .padding([3, 8])

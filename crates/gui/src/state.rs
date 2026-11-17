@@ -9,6 +9,7 @@ mod actions;
 mod apps;
 mod events;
 mod output;
+mod types;
 
 use std::{collections::HashMap, time::Instant};
 
@@ -19,25 +20,11 @@ pub(crate) use output::OutputOption;
 #[cfg(test)]
 pub(crate) use output::normalize_output_name;
 use pipelink_common::{
-    events::{GraphSnapshot, InstalledAppInfo, MixRouteInfo, StateEvent},
+    events::{ChannelVolumeInfo, GraphSnapshot, InstalledAppInfo, MixRouteInfo},
     types::{AppDisplay, ChannelName, MixName},
 };
 use pipelink_ipc::UnixSocketClient;
-
-/// Active top-level sidebar destination.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum NavPage {
-    #[default]
-    Mixes,
-    Settings,
-}
-
-/// Active Channel Detail modal state and optional `+ Add app` search query.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChannelModalState {
-    pub(crate) channel: ChannelName,
-    pub(crate) picker_query: Option<String>,
-}
+pub(crate) use types::{ChannelModalState, CreateChannelMode, Message, NavPage};
 
 /// Root GUI state synchronized with the `pipelink` daemon via IPC.
 pub(crate) struct App {
@@ -48,67 +35,14 @@ pub(crate) struct App {
     pub(crate) installed_apps: Vec<InstalledAppInfo>,
     pub(crate) icon_handles: HashMap<String, svg::Handle>,
     pub(crate) last_error: Option<String>,
-    pub(crate) creating_channel: bool,
-    pub(crate) new_channel_name: String,
+    pub(crate) create_channel: Option<CreateChannelMode>,
+    pub(crate) pending_route_after_create: Option<(ChannelName, AppDisplay)>,
     pub(crate) creating_mix: bool,
     pub(crate) new_mix_name: String,
+    pub(crate) renaming_mix: Option<(MixName, String)>,
     pub(crate) modal: Option<ChannelModalState>,
     pub(crate) gain_throttle: HashMap<(ChannelName, MixName), Instant>,
-}
-
-/// Messages produced by user interactions and background IPC tasks.
-#[derive(Debug, Clone)]
-pub(crate) enum Message {
-    DaemonConnected,
-    DaemonDisconnected,
-    SnapshotLoaded(Result<GraphSnapshot, String>),
-    InstalledAppsLoaded(Result<InstalledAppsPayload, String>),
-    StateEventReceived(StateEvent),
-    MutationFinished(Result<(), String>),
-    SelectPage(NavPage),
-    SelectOutput(OutputOption),
-    SetDefaultSink(String),
-    SelectActiveMix(MixName),
-    ToggleRoute {
-        channel: ChannelName,
-        mix: MixName,
-        active: bool,
-    },
-    GainChanged {
-        channel: ChannelName,
-        mix: MixName,
-        percent: f32,
-    },
-    GainReleased {
-        channel: ChannelName,
-        mix: MixName,
-    },
-    ToggleMute {
-        channel: ChannelName,
-        mix: MixName,
-        muted: bool,
-    },
-    OpenCreateChannel,
-    CancelCreateChannel,
-    NewChannelNameChanged(String),
-    SubmitCreateChannel,
-    RemoveChannel(ChannelName),
-    OpenChannelDetails(ChannelName),
-    CloseChannelDetails,
-    ToggleAppPicker,
-    AppSearchChanged(String),
-    RouteApp {
-        app: AppDisplay,
-        channel: ChannelName,
-    },
-    UnrouteApp(AppDisplay),
-    OpenCreateMix,
-    CancelCreateMix,
-    NewMixNameChanged(String),
-    SubmitCreateMix,
-    RemoveMix(MixName),
-    RefreshSnapshot,
-    DismissError,
+    pub(crate) master_throttle: HashMap<ChannelName, Instant>,
 }
 
 impl App {
@@ -127,12 +61,14 @@ impl App {
             installed_apps: Vec::new(),
             icon_handles: HashMap::new(),
             last_error: None,
-            creating_channel: false,
-            new_channel_name: String::new(),
+            create_channel: None,
+            pending_route_after_create: None,
             creating_mix: false,
             new_mix_name: String::new(),
+            renaming_mix: None,
             modal: None,
             gain_throttle: HashMap::new(),
+            master_throttle: HashMap::new(),
         };
 
         (state, initial)
@@ -163,11 +99,7 @@ impl App {
                 self.icon_handles = payload.icons;
             },
             Message::InstalledAppsLoaded(Err(_)) | Message::MutationFinished(Ok(())) => {},
-            Message::StateEventReceived(event) => {
-                if self.apply_state_event(event) {
-                    return actions::fetch_snapshot(self.client.clone());
-                }
-            },
+            Message::StateEventReceived(event) => return self.apply_state_event(event),
             Message::SelectPage(page) => self.page = page,
             Message::SelectOutput(option) => {
                 return actions::select_output(self.client.clone(), option.0.name.to_string());
@@ -196,6 +128,18 @@ impl App {
                 mix,
                 muted,
             } => return actions::set_mute(self.client.clone(), channel, mix, muted),
+            Message::ChannelVolumeChanged { channel, percent } => {
+                return self.handle_channel_volume_changed(channel, percent);
+            },
+            Message::ChannelVolumeReleased { channel } => {
+                return self.handle_channel_volume_released(channel);
+            },
+            Message::ToggleChannelMute { channel, muted } => {
+                return actions::set_channel_master_mute(self.client.clone(), channel, muted);
+            },
+            Message::MoveChannel { channel, to_index } => {
+                return actions::move_channel(self.client.clone(), channel, to_index);
+            },
             Message::RemoveChannel(name) => {
                 return actions::remove_channel(self.client.clone(), name);
             },
@@ -210,15 +154,24 @@ impl App {
     fn update_overlays_and_forms(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenCreateChannel => {
-                self.creating_channel = true;
-                self.new_channel_name.clear();
+                self.create_channel = Some(CreateChannelMode::AppPicker(String::new()));
             },
-            Message::CancelCreateChannel => {
-                self.creating_channel = false;
-                self.new_channel_name.clear();
+            Message::OpenEmptyChannelInput => {
+                self.create_channel = Some(CreateChannelMode::EmptyInput(String::new()));
             },
-            Message::NewChannelNameChanged(name) => self.new_channel_name = name,
+            Message::CancelCreateChannel => self.create_channel = None,
+            Message::ChannelCreateSearchChanged(query) => {
+                self.create_channel = Some(CreateChannelMode::AppPicker(query));
+            },
+            Message::NewChannelNameChanged(name) => {
+                self.create_channel = Some(CreateChannelMode::EmptyInput(name));
+            },
             Message::SubmitCreateChannel => return self.submit_create_channel(),
+            Message::CreateChannelForApp { channel, app } => {
+                self.create_channel = None;
+                self.pending_route_after_create = Some((channel.clone(), app));
+                return actions::create_channel(self.client.clone(), channel);
+            },
             Message::OpenCreateMix => {
                 self.creating_mix = true;
                 self.new_mix_name.clear();
@@ -229,14 +182,31 @@ impl App {
             },
             Message::NewMixNameChanged(name) => self.new_mix_name = name,
             Message::SubmitCreateMix => return self.submit_create_mix(),
+            Message::StartRenameMix(mix) => {
+                self.renaming_mix = Some((mix.clone(), mix.to_string()));
+            },
+            Message::CancelRenameMix => self.renaming_mix = None,
+            Message::MixRenameDraftChanged(draft) => {
+                if let Some((_, existing)) = &mut self.renaming_mix {
+                    *existing = draft;
+                }
+            },
+            Message::SubmitRenameMix => return self.submit_rename_mix(),
             Message::OpenChannelDetails(channel) => {
                 self.modal = Some(ChannelModalState {
+                    rename_draft: channel.to_string(),
                     channel,
                     picker_query: None,
                 });
                 return actions::fetch_installed_apps(self.client.clone());
             },
             Message::CloseChannelDetails => self.modal = None,
+            Message::ChannelRenameDraftChanged(draft) => {
+                if let Some(modal) = &mut self.modal {
+                    modal.rename_draft = draft;
+                }
+            },
+            Message::SubmitRenameChannel => return self.submit_rename_channel(),
             Message::ToggleAppPicker => {
                 if let Some(modal) = &mut self.modal {
                     modal.picker_query = modal.picker_query.is_none().then(String::new);
@@ -253,9 +223,7 @@ impl App {
                 }
                 return actions::route_app(self.client.clone(), app, channel);
             },
-            Message::UnrouteApp(app) => {
-                return actions::unroute_app(self.client.clone(), app);
-            },
+            Message::UnrouteApp(app) => return actions::unroute_app(self.client.clone(), app),
             _ => {},
         }
 
@@ -272,6 +240,33 @@ impl App {
             .routes
             .iter()
             .find(|r| r.channel == *channel && r.mix == *mix)
+    }
+
+    /// Returns `(volume_percent, muted)` for `channel`'s null-sink.
+    pub(crate) fn channel_volume(&self, channel: &ChannelName) -> (f32, bool) {
+        self.snapshot
+            .channel_volumes
+            .iter()
+            .find(|v| v.channel.eq_ignore_ascii_case(channel))
+            .map_or((100.0, false), |v| (v.volume_percent, v.muted))
+    }
+
+    /// Updates local optimistic null-sink volume during slider drags.
+    pub(crate) fn set_local_channel_volume(&mut self, channel: &ChannelName, percent: f32) {
+        if let Some(entry) = self
+            .snapshot
+            .channel_volumes
+            .iter_mut()
+            .find(|v| v.channel.eq_ignore_ascii_case(channel))
+        {
+            entry.volume_percent = percent;
+        } else {
+            self.snapshot.channel_volumes.push(ChannelVolumeInfo {
+                channel: channel.clone(),
+                volume_percent: percent,
+                muted: false,
+            });
+        }
     }
 
     /// Returns whether `channel` is currently `WirePlumber`'s default audio sink.

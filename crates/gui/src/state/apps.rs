@@ -86,8 +86,13 @@ impl App {
         routed
     }
 
-    /// Builds filtered `Active` and `Installed` application groups for `+ Add app`.
-    pub(crate) fn picker_apps(&self, channel: &ChannelName, query: &str) -> PickerGroups {
+    /// Builds filtered `Active` and `Installed` application groups for `+ Add app`
+    /// (excluding apps already assigned to `exclude_channel` when provided).
+    pub(crate) fn picker_apps(
+        &self,
+        exclude_channel: Option<&ChannelName>,
+        query: &str,
+    ) -> PickerGroups {
         let needle = query.trim().to_ascii_lowercase();
         let mut seen = HashSet::new();
         let mut active = Vec::new();
@@ -98,11 +103,11 @@ impl App {
             seen.insert(key.clone());
             seen.insert(slug.clone());
 
-            if app
-                .channel
-                .as_ref()
-                .is_some_and(|ch| ch.eq_ignore_ascii_case(channel))
-            {
+            if exclude_channel.is_some_and(|ch| {
+                app.channel
+                    .as_ref()
+                    .is_some_and(|cur| cur.eq_ignore_ascii_case(ch))
+            }) {
                 continue;
             }
             if !needle.is_empty() && !key.contains(&needle) && !slug.contains(&needle) {
@@ -136,10 +141,11 @@ impl App {
             }
 
             let current_channel = self.find_route_for_name(&entry.name);
-            if current_channel
-                .as_ref()
-                .is_some_and(|ch| ch.eq_ignore_ascii_case(channel))
-            {
+            if exclude_channel.is_some_and(|ch| {
+                current_channel
+                    .as_ref()
+                    .is_some_and(|cur| cur.eq_ignore_ascii_case(ch))
+            }) {
                 continue;
             }
             if !needle.is_empty()

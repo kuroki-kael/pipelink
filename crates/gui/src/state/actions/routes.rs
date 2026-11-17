@@ -99,6 +99,27 @@ pub(in crate::state) fn remove_mix(client: UnixSocketClient, name: MixName) -> T
     )
 }
 
+pub(in crate::state) fn rename_mix(
+    client: UnixSocketClient,
+    old_name: MixName,
+    new_name: MixName,
+) -> Task<Message> {
+    let target = old_name.clone();
+    send_mutation(
+        client,
+        ControlEvent::RenameMix { old_name, new_name },
+        move |ev| match ev {
+            StateEvent::MixRenamed { old_name: o, .. } => o.eq_ignore_ascii_case(&target),
+            StateEvent::MixOperationFailed { mix: m, .. } => m.eq_ignore_ascii_case(&target),
+            _ => false,
+        },
+        |ev| match ev {
+            StateEvent::MixOperationFailed { error, .. } => Err(error),
+            _ => Ok(()),
+        },
+    )
+}
+
 pub(in crate::state) fn select_active_mix(
     client: UnixSocketClient,
     name: MixName,

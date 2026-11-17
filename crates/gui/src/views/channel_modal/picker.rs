@@ -41,7 +41,7 @@ impl App {
         .padding([6, 8])
         .style(theme::card_style);
 
-        let groups = self.picker_apps(channel, query);
+        let groups = self.picker_apps(Some(channel), query);
         let has_active = !groups.active.is_empty();
         let has_installed = !groups.installed.is_empty();
         let mut list = column![].spacing(6).width(Length::Fill);
